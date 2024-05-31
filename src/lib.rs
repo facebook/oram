@@ -35,16 +35,16 @@ pub struct BlockValue([u8; BLOCK_SIZE]);
 
 impl BlockValue {
     fn encrypt(&self) -> BlockValue {
-        self.clone()
+        *self
     }
     fn decrypt(&self) -> BlockValue {
-        self.clone()
+        *self
     }
 }
 
 impl Default for BlockValue {
     fn default() -> Self {
-        return BlockValue([0; BLOCK_SIZE]);
+        BlockValue([0; BLOCK_SIZE])
     }
 }
 
@@ -54,9 +54,9 @@ struct LinearTimeORAM {
 
 impl ORAM for LinearTimeORAM {
     fn new(block_capacity: IndexType) -> Self {
-        return Self {
+        Self {
             memory: vec![BlockValue::default(); block_capacity],
-        };
+        }
     }
 
     fn access(&mut self, index: IndexType, optional_new_value: Option<BlockValue>) -> BlockValue {
