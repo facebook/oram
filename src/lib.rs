@@ -171,4 +171,33 @@ mod tests {
         let read_value = oram.read(0);
         assert_eq!(written_value, read_value);
     }
+
+    #[test]
+    fn check_correctness() {
+        const BLOCK_CAPACITY: usize = 256;
+        let num_operations = 10000;
+
+        let mut rng = StdRng::seed_from_u64(0);
+
+        let mut oram = LinearTimeORAM::new(BLOCK_CAPACITY);
+        let mut mirror_array = [BlockValue::default(); BLOCK_CAPACITY];
+
+        for _ in 0..num_operations {
+            let random_index = rng.gen_range(0..BLOCK_CAPACITY);
+            let random_block_value = rng.gen();
+
+            let read_versus_write: bool = rng.gen();
+
+            if read_versus_write {
+                assert_eq!(oram.read(random_index), mirror_array[random_index]);
+            } else {
+                oram.write(random_index, random_block_value);
+                mirror_array[random_index] = random_block_value;
+            }
+        }
+
+        for index in 0..BLOCK_CAPACITY {
+            assert_eq!(oram.read(index), mirror_array[index], "{index}")
+        }
+    }
 }
