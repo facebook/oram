@@ -6,6 +6,7 @@
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
 //! An implementation of Oblivious RAM
+
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
 use rand::{
@@ -13,7 +14,7 @@ use rand::{
     Rng,
 };
 use std::ops::BitAnd;
-use subtle::{Choice, ConditionallySelectable, CtOption};
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
 type BlockSizeType = usize;
 type IndexType = usize;
@@ -30,7 +31,7 @@ pub trait ORAM {
     /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> IndexType;
 
-    /// Performs an ORAM access.
+    /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
     /// Returns the value previously stored at `index`.
     fn access(&mut self, index: IndexType, optional_new_value: CtOption<BlockValue>) -> BlockValue;
@@ -48,7 +49,7 @@ pub trait ORAM {
     }
 }
 
-/// The basic unit of memory accessible by ORAM operations.
+/// The smallest unit of memory readable/writable by the ORAM.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlockValue([u8; BLOCK_SIZE]);
 
@@ -78,17 +79,17 @@ impl Distribution<BlockValue> for Standard {
     }
 }
 
-// Spencer: Added a simple Memory trait to model the memory controller the TEE is interacting with.
-trait Memory<V: Default + Copy> {
+// A simple Memory trait to model the memory controller the TEE is interacting with.
+trait IndexedDatabase<V: Default + Copy> {
     fn new(number_of_addresses: IndexType) -> Self;
     fn len(&self) -> IndexType;
     fn read(&self, index: IndexType) -> V;
     fn write(&mut self, index: IndexType, value: V);
 }
 
-struct SimpleMemory<V>(Vec<V>);
+struct SimpleIndexedDatabase<V>(Vec<V>);
 
-impl<V: Default + Copy> Memory<V> for SimpleMemory<V> {
+impl<V: Default + Copy> IndexedDatabase<V> for SimpleIndexedDatabase<V> {
     fn new(number_of_addresses: IndexType) -> Self {
         Self(vec![V::default(); number_of_addresses])
     }
@@ -107,28 +108,35 @@ impl<V: Default + Copy> Memory<V> for SimpleMemory<V> {
 }
 
 struct LinearTimeORAM {
-    memory: SimpleMemory<BlockValue>,
+    physical_memory: SimpleIndexedDatabase<BlockValue>,
 }
 
 impl ORAM for LinearTimeORAM {
     fn new(block_capacity: IndexType) -> Self {
         Self {
-            memory: SimpleMemory::new(block_capacity),
+            physical_memory: SimpleIndexedDatabase::new(block_capacity),
         }
     }
 
     fn access(&mut self, index: IndexType, optional_new_value: CtOption<BlockValue>) -> BlockValue {
-        assert!(index < self.block_capacity());
+        // Note: index and optional_new_value should be considered secret for the purposes of constant-time operations.
+
+        // TODO(#6): Handle malformed input in a more robust way.
+        let index_in_bounds: bool = (index as u128)
+            .ct_lt(&(self.block_capacity() as u128))
+            .into();
+        assert!(index_in_bounds);
 
         // This is a dummy value which will always be overwritten.
         let mut result = BlockValue::default();
 
-        for i in 0..self.memory.len() {
+        for i in 0..self.physical_memory.len() {
             // Read from memory
-            let entry = self.memory.read(i);
+            let entry = self.physical_memory.read(i);
 
             // Client-side processing
-            let is_requested_index: Choice = (u8::from(index == i)).into();
+            // let is_requested_index: Choice = (u8::from(index == i)).into();
+            let is_requested_index = (i as IndexType).ct_eq(&index);
 
             // Based on whether the loop counter matches the requested index,
             // conditionally read the value in memory into the result of the access.
@@ -148,13 +156,13 @@ impl ORAM for LinearTimeORAM {
             // End client-side processing
 
             // Write the (potentially) updated value back to memory.
-            self.memory.write(i, potentially_updated_value);
+            self.physical_memory.write(i, potentially_updated_value);
         }
         result
     }
 
     fn block_capacity(&self) -> IndexType {
-        self.memory.len()
+        self.physical_memory.len()
     }
 }
 
