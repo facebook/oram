@@ -80,16 +80,16 @@ impl Distribution<BlockValue> for Standard {
 }
 
 // A simple Memory trait to model the memory controller the TEE is interacting with.
-trait IndexedDatabase<V: Default + Copy> {
+trait Database<V: Default + Copy> {
     fn new(number_of_addresses: IndexType) -> Self;
     fn len(&self) -> IndexType;
     fn read(&self, index: IndexType) -> V;
     fn write(&mut self, index: IndexType, value: V);
 }
 
-struct SimpleIndexedDatabase<V>(Vec<V>);
+struct SimpleDatabase<V>(Vec<V>);
 
-impl<V: Default + Copy> IndexedDatabase<V> for SimpleIndexedDatabase<V> {
+impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
     fn new(number_of_addresses: IndexType) -> Self {
         Self(vec![V::default(); number_of_addresses])
     }
@@ -108,13 +108,13 @@ impl<V: Default + Copy> IndexedDatabase<V> for SimpleIndexedDatabase<V> {
 }
 
 struct LinearTimeORAM {
-    physical_memory: SimpleIndexedDatabase<BlockValue>,
+    physical_memory: SimpleDatabase<BlockValue>,
 }
 
 impl ORAM for LinearTimeORAM {
     fn new(block_capacity: IndexType) -> Self {
         Self {
-            physical_memory: SimpleIndexedDatabase::new(block_capacity),
+            physical_memory: SimpleDatabase::new(block_capacity),
         }
     }
 
@@ -125,6 +125,8 @@ impl ORAM for LinearTimeORAM {
         let index_in_bounds: bool = (index as u128)
             .ct_lt(&(self.block_capacity() as u128))
             .into();
+
+        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not. See also Issue #6.
         assert!(index_in_bounds);
 
         // This is a dummy value which will always be overwritten.
