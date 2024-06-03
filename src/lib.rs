@@ -173,6 +173,7 @@ impl ORAM for LinearTimeORAM {
 mod tests {
     use super::*;
     use rand::{rngs::StdRng, SeedableRng};
+    use std::mem;
 
     #[test]
     fn simple_read_write() {
@@ -209,6 +210,15 @@ mod tests {
 
         for index in 0..BLOCK_CAPACITY {
             assert_eq!(oram.read(index), mirror_array[index], "{index}")
+        }
+    }
+
+    #[test]
+    fn check_alignment() {
+        const BLOCK_CAPACITY: usize = 256;
+        let oram = LinearTimeORAM::new(BLOCK_CAPACITY);
+        for block in &oram.physical_memory.0 {
+            assert_eq!(mem::align_of_val(block), 64);
         }
     }
 }
