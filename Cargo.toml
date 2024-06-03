@@ -2,3 +2,13 @@
 name = "oram"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/facebook/oram"
+description = "An implementation of Oblivious RAM."
+license = "MIT OR Apache-2.0"
+keywords = ["oram", "oblivious RAM", "cryptography"]
+categories = ["cryptography"]
+
+
+[dependencies]
+subtle = "2.5"
+rand = "0.8"
