@@ -12,3 +12,4 @@ categories = ["cryptography"]
 [dependencies]
 subtle = "2.5"
 rand = "0.8"
+aligned = "0.4.2"

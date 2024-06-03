@@ -9,6 +9,7 @@
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
+use aligned::{Aligned, A64};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -51,11 +52,11 @@ pub trait ORAM {
 
 /// The smallest unit of memory readable/writable by the ORAM.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BlockValue([u8; BLOCK_SIZE]);
+pub struct BlockValue(Aligned<A64, [u8; BLOCK_SIZE]>);
 
 impl Default for BlockValue {
     fn default() -> Self {
-        BlockValue([0; BLOCK_SIZE])
+        BlockValue(Aligned([0; BLOCK_SIZE]))
     }
 }
 
@@ -176,7 +177,7 @@ mod tests {
     #[test]
     fn simple_read_write() {
         let mut oram = LinearTimeORAM::new(16);
-        let written_value = BlockValue([1; BLOCK_SIZE]);
+        let written_value = BlockValue(Aligned([1; BLOCK_SIZE]));
         oram.write(0, written_value);
         let read_value = oram.read(0);
         assert_eq!(written_value, read_value);
