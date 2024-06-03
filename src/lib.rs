@@ -17,12 +17,7 @@ use rand::{
 use std::ops::BitAnd;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
-type BlockSizeType = usize;
 type IndexType = usize;
-
-// For debugging, we can keep this value small. For production, probably 4096 (a 4KB memory page)
-// makes the most sense.
-const BLOCK_SIZE: BlockSizeType = 64;
 
 /// Represents an oblivious RAM mapping `IndexType` addresses to `BlockValue` values.
 pub trait ORAM<B: ArrayLength> {
@@ -71,7 +66,7 @@ where
 {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let mut result = BlockValue::default();
-        for i in 0..BLOCK_SIZE {
+        for i in 0..a.0.len() {
             result.0[i] = u8::conditional_select(&a.0[i], &b.0[i], choice);
         }
         result
@@ -81,7 +76,7 @@ where
 impl<B: ArrayLength> Distribution<BlockValue<B>> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue<B> {
         let mut result = BlockValue::default();
-        for i in 0..BLOCK_SIZE {
+        for i in 0..result.0.len() {
             result.0[i] = rng.gen();
         }
         result
