@@ -9,13 +9,13 @@
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
+use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use std::ops::BitAnd;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
-use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray, typenum::U64};
 
 type BlockSizeType = usize;
 type IndexType = usize;
@@ -35,7 +35,11 @@ pub trait ORAM<B: ArrayLength> {
     /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
     /// Returns the value previously stored at `index`.
-    fn access(&mut self, index: IndexType, optional_new_value: CtOption<BlockValue<B>>) -> BlockValue<B>;
+    fn access(
+        &mut self,
+        index: IndexType,
+        optional_new_value: CtOption<BlockValue<B>>,
+    ) -> BlockValue<B>;
 
     /// Obliviously reads the value stored at `index`.
     fn read(&mut self, index: IndexType) -> BlockValue<B> {
@@ -61,8 +65,9 @@ impl<B: ArrayLength> Default for BlockValue<B> {
     }
 }
 
-impl<B: ArrayLength> ConditionallySelectable for BlockValue<B> 
-where <B as ArrayLength>::ArrayType<u8>: Copy
+impl<B: ArrayLength> ConditionallySelectable for BlockValue<B>
+where
+    <B as ArrayLength>::ArrayType<u8>: Copy,
 {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let mut result = BlockValue::default();
@@ -115,8 +120,9 @@ struct LinearTimeORAM<B: ArrayLength> {
     physical_memory: SimpleDatabase<BlockValue<B>>,
 }
 
-impl <B: ArrayLength> ORAM<B> for LinearTimeORAM<B> 
-where <B as ArrayLength>::ArrayType<u8>: Copy
+impl<B: ArrayLength> ORAM<B> for LinearTimeORAM<B>
+where
+    <B as ArrayLength>::ArrayType<u8>: Copy,
 {
     fn new(block_capacity: IndexType) -> Self {
         Self {
@@ -124,7 +130,11 @@ where <B as ArrayLength>::ArrayType<u8>: Copy
         }
     }
 
-    fn access(&mut self, index: IndexType, optional_new_value: CtOption<BlockValue<B>>) -> BlockValue<B> {
+    fn access(
+        &mut self,
+        index: IndexType,
+        optional_new_value: CtOption<BlockValue<B>>,
+    ) -> BlockValue<B> {
         // Note: index and optional_new_value should be considered secret for the purposes of constant-time operations.
 
         // TODO(#6): Handle malformed input in a more robust way.
@@ -177,11 +187,12 @@ where <B as ArrayLength>::ArrayType<u8>: Copy
 #[cfg(test)]
 mod tests {
     use super::*;
+    use generic_array::typenum::U64;
     use rand::{rngs::StdRng, SeedableRng};
 
     #[test]
     fn simple_read_write() {
-        let mut oram: LinearTimeORAM<U64>= LinearTimeORAM::new(16);
+        let mut oram: LinearTimeORAM<U64> = LinearTimeORAM::new(16);
         let written_value = BlockValue(GenericArray::generate(|_| 1));
         oram.write(0, written_value);
         let read_value = oram.read(0);
