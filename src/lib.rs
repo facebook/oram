@@ -15,6 +15,7 @@ use rand::{
 };
 use std::ops::BitAnd;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
+use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray, typenum::U64};
 
 type BlockSizeType = usize;
 type IndexType = usize;
@@ -24,7 +25,7 @@ type IndexType = usize;
 const BLOCK_SIZE: BlockSizeType = 64;
 
 /// Represents an oblivious RAM mapping `IndexType` addresses to `BlockValue` values.
-pub trait ORAM {
+pub trait ORAM<B: ArrayLength> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
     fn new(block_capacity: IndexType) -> Self;
 
@@ -34,32 +35,35 @@ pub trait ORAM {
     /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
     /// Returns the value previously stored at `index`.
-    fn access(&mut self, index: IndexType, optional_new_value: CtOption<BlockValue>) -> BlockValue;
+    fn access(&mut self, index: IndexType, optional_new_value: CtOption<BlockValue<B>>) -> BlockValue<B>;
 
     /// Obliviously reads the value stored at `index`.
-    fn read(&mut self, index: IndexType) -> BlockValue {
+    fn read(&mut self, index: IndexType) -> BlockValue<B> {
         let ct_none = CtOption::new(BlockValue::default(), 0.into());
         self.access(index, ct_none)
     }
 
     /// Obliviously writes the value stored at `index`.
-    fn write(&mut self, index: IndexType, new_value: BlockValue) {
+    fn write(&mut self, index: IndexType, new_value: BlockValue<B>) {
         let ct_some_new_value = CtOption::new(new_value, 1.into());
         self.access(index, ct_some_new_value);
     }
 }
 
 /// The smallest unit of memory readable/writable by the ORAM.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BlockValue([u8; BLOCK_SIZE]);
+#[derive(Clone, Debug, PartialEq)]
+pub struct BlockValue<B: ArrayLength>(GenericArray<u8, B>);
+impl<B: ArrayLength> Copy for BlockValue<B> where B::ArrayType<u8>: Copy {}
 
-impl Default for BlockValue {
+impl<B: ArrayLength> Default for BlockValue<B> {
     fn default() -> Self {
-        BlockValue([0; BLOCK_SIZE])
+        BlockValue::<B>(GenericArray::generate(|_| 0))
     }
 }
 
-impl ConditionallySelectable for BlockValue {
+impl<B: ArrayLength> ConditionallySelectable for BlockValue<B> 
+where <B as ArrayLength>::ArrayType<u8>: Copy
+{
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let mut result = BlockValue::default();
         for i in 0..BLOCK_SIZE {
@@ -69,8 +73,8 @@ impl ConditionallySelectable for BlockValue {
     }
 }
 
-impl Distribution<BlockValue> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue {
+impl<B: ArrayLength> Distribution<BlockValue<B>> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue<B> {
         let mut result = BlockValue::default();
         for i in 0..BLOCK_SIZE {
             result.0[i] = rng.gen();
@@ -107,18 +111,20 @@ impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
     }
 }
 
-struct LinearTimeORAM {
-    physical_memory: SimpleDatabase<BlockValue>,
+struct LinearTimeORAM<B: ArrayLength> {
+    physical_memory: SimpleDatabase<BlockValue<B>>,
 }
 
-impl ORAM for LinearTimeORAM {
+impl <B: ArrayLength> ORAM<B> for LinearTimeORAM<B> 
+where <B as ArrayLength>::ArrayType<u8>: Copy
+{
     fn new(block_capacity: IndexType) -> Self {
         Self {
             physical_memory: SimpleDatabase::new(block_capacity),
         }
     }
 
-    fn access(&mut self, index: IndexType, optional_new_value: CtOption<BlockValue>) -> BlockValue {
+    fn access(&mut self, index: IndexType, optional_new_value: CtOption<BlockValue<B>>) -> BlockValue<B> {
         // Note: index and optional_new_value should be considered secret for the purposes of constant-time operations.
 
         // TODO(#6): Handle malformed input in a more robust way.
@@ -175,8 +181,8 @@ mod tests {
 
     #[test]
     fn simple_read_write() {
-        let mut oram = LinearTimeORAM::new(16);
-        let written_value = BlockValue([1; BLOCK_SIZE]);
+        let mut oram: LinearTimeORAM<U64>= LinearTimeORAM::new(16);
+        let written_value = BlockValue(GenericArray::generate(|_| 1));
         oram.write(0, written_value);
         let read_value = oram.read(0);
         assert_eq!(written_value, read_value);
@@ -189,7 +195,7 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(0);
 
-        let mut oram = LinearTimeORAM::new(BLOCK_CAPACITY);
+        let mut oram: LinearTimeORAM<U64> = LinearTimeORAM::new(BLOCK_CAPACITY);
         let mut mirror_array = [BlockValue::default(); BLOCK_CAPACITY];
 
         for _ in 0..num_operations {
