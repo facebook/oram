@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn check_alignment() {
         const BLOCK_CAPACITY: usize = 256;
-        let oram = LinearTimeORAM::new(BLOCK_CAPACITY);
+        let oram: LinearTimeORAM<U64> = LinearTimeORAM::new(BLOCK_CAPACITY);
         for block in &oram.physical_memory.0 {
             assert_eq!(mem::align_of_val(block), 64);
         }
