@@ -10,6 +10,7 @@
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
 use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray};
+use aligned::{Aligned, A64};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -51,12 +52,12 @@ pub trait ORAM<B: ArrayLength> {
 
 /// The smallest unit of memory readable/writable by the ORAM.
 #[derive(Clone, Debug, PartialEq)]
-pub struct BlockValue<B: ArrayLength>(GenericArray<u8, B>);
+pub struct BlockValue<B: ArrayLength>(Aligned<A64, GenericArray<u8, B>>);
 impl<B: ArrayLength> Copy for BlockValue<B> where B::ArrayType<u8>: Copy {}
 
 impl<B: ArrayLength> Default for BlockValue<B> {
     fn default() -> Self {
-        BlockValue::<B>(GenericArray::generate(|_| 0))
+        BlockValue::<B>(Aligned(GenericArray::generate(|_| 0)))
     }
 }
 
@@ -184,11 +185,13 @@ mod tests {
     use super::*;
     use generic_array::typenum::U64;
     use rand::{rngs::StdRng, SeedableRng};
+    use std::mem;
 
     #[test]
     fn simple_read_write() {
         let mut oram: LinearTimeORAM<U64> = LinearTimeORAM::new(16);
-        let written_value = BlockValue(GenericArray::generate(|_| 1));
+        let written_value = BlockValue(Aligned(GenericArray::generate(|_| 1)));
+
         oram.write(0, written_value);
         let read_value = oram.read(0);
         assert_eq!(written_value, read_value);
@@ -220,6 +223,15 @@ mod tests {
 
         for index in 0..BLOCK_CAPACITY {
             assert_eq!(oram.read(index), mirror_array[index], "{index}")
+        }
+    }
+
+    #[test]
+    fn check_alignment() {
+        const BLOCK_CAPACITY: usize = 256;
+        let oram = LinearTimeORAM::new(BLOCK_CAPACITY);
+        for block in &oram.physical_memory.0 {
+            assert_eq!(mem::align_of_val(block), 64);
         }
     }
 }
