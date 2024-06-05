@@ -9,8 +9,8 @@
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
-use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray};
 use aligned::{Aligned, A64};
+use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
