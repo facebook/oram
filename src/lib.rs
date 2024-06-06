@@ -18,16 +18,24 @@ use rand::{
 use std::ops::BitAnd;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
-type IndexType = usize;
+/// The numeric type used to specify the size of an ORAM in blocks, and to index into the ORAM.
+pub type IndexType = usize;
+/// The numeric type used to specify the size of each block of the ORAM in bytes.
+pub type BlockSizeType = usize;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
 pub trait ORAM<B: ArrayLength> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
-    fn new(block_capacity: IndexType) -> Self;
+    fn new(block_capacity: IndexType) -> Self
+    where
+        Self: Sized;
 
     /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> IndexType;
+
+    /// Returns the size in bytes of each block of this ORAM.
+    fn block_size(&self) -> BlockSizeType;
 
     /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
@@ -56,6 +64,30 @@ pub trait ORAM<B: ArrayLength> {
 pub struct BlockValue<B: ArrayLength>(Aligned<A64, GenericArray<u8, B>>);
 impl<B: ArrayLength> Copy for BlockValue<B> where B::ArrayType<u8>: Copy {}
 
+impl<B: ArrayLength> BlockValue<B>
+where
+    <B as ArrayLength>::ArrayType<u8>: Copy,
+{
+    /// Returns the length in bytes of this `BlockValue`.
+    pub fn byte_length(&self) -> BlockSizeType {
+        self.0.len()
+    }
+
+    /// Instantiates a `BlockValue` from an array of `BLOCK_SIZE` bytes.
+    pub fn from_byte_array(data: &GenericArray<u8, B>) -> Self {
+        Self(Aligned(*data))
+    }
+}
+
+impl<B: ArrayLength> From<BlockValue<B>> for GenericArray<u8, B>
+where
+    <B as ArrayLength>::ArrayType<u8>: Copy,
+{
+    fn from(value: BlockValue<B>) -> Self {
+        *value.0
+    }
+}
+
 impl<B: ArrayLength> Default for BlockValue<B> {
     fn default() -> Self {
         BlockValue::<B>(Aligned(GenericArray::generate(|_| 0)))
@@ -68,43 +100,57 @@ where
 {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let mut result = BlockValue::default();
-        for i in 0..a.0.len() {
+        for i in 0..a.byte_length() {
             result.0[i] = u8::conditional_select(&a.0[i], &b.0[i], choice);
         }
         result
     }
 }
 
-impl<B: ArrayLength> Distribution<BlockValue<B>> for Standard {
+impl<B: ArrayLength> Distribution<BlockValue<B>> for Standard
+where
+    <B as ArrayLength>::ArrayType<u8>: Copy,
+{
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue<B> {
         let mut result = BlockValue::default();
-        for i in 0..result.0.len() {
+        for i in 0..result.byte_length() {
             result.0[i] = rng.gen();
         }
         result
     }
 }
 
-// A simple Memory trait to model the memory controller the TEE is interacting with.
-trait Database<V: Default + Copy> {
+/// A simple Memory trait to model the memory controller the TEE is interacting with.
+pub trait Database<V: Default + Copy>: Sized {
+    /// Returns a new `Database` filled with default values.
     fn new(number_of_addresses: IndexType) -> Self;
-    fn len(&self) -> IndexType;
-    fn read(&self, index: IndexType) -> V;
+    /// Returns the number of values stored by `self`.
+    fn capacity(&self) -> IndexType;
+    /// Reads the value stored at `index`.
+    fn read(&mut self, index: IndexType) -> V;
+    /// Reads the value stored at `index`, without any instrumentation or other side effects.
+    fn immutable_read(&self, index: IndexType) -> V;
+    /// Replaces the value stored at `index` with `value`.
     fn write(&mut self, index: IndexType, value: V);
 }
 
-struct SimpleDatabase<V>(Vec<V>);
+/// A simple Database that stores its data as a Vec.
+pub struct SimpleDatabase<V>(Vec<V>);
 
 impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
     fn new(number_of_addresses: IndexType) -> Self {
         Self(vec![V::default(); number_of_addresses])
     }
 
-    fn len(&self) -> IndexType {
+    fn capacity(&self) -> IndexType {
         self.0.len()
     }
 
-    fn read(&self, index: IndexType) -> V {
+    fn read(&mut self, index: IndexType) -> V {
+        self.0[index]
+    }
+
+    fn immutable_read(&self, index: IndexType) -> V {
         self.0[index]
     }
 
@@ -113,18 +159,73 @@ impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
     }
 }
 
-struct LinearTimeORAM<B: ArrayLength> {
-    physical_memory: SimpleDatabase<BlockValue<B>>,
+/// A Database that counts reads and writes.
+pub struct CountAccessesDatabase<V> {
+    data: SimpleDatabase<V>,
+    read_count: u128,
+    write_count: u128,
 }
 
-impl<B: ArrayLength> ORAM<B> for LinearTimeORAM<B>
+impl<V> CountAccessesDatabase<V> {
+    /// Returns the total number of reads to the database.
+    pub fn get_read_count(&self) -> u128 {
+        self.read_count
+    }
+
+    /// Returns the total number of writes to the database.
+    pub fn get_write_count(&self) -> u128 {
+        self.write_count
+    }
+}
+
+impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
+    fn new(number_of_addresses: IndexType) -> Self {
+        Self {
+            data: SimpleDatabase::new(number_of_addresses),
+            read_count: 0,
+            write_count: 0,
+        }
+    }
+
+    fn read(&mut self, index: IndexType) -> V {
+        self.read_count += 1;
+        self.data.read(index)
+    }
+
+    fn immutable_read(&self, index: IndexType) -> V {
+        self.data.immutable_read(index)
+    }
+
+    fn write(&mut self, index: IndexType, value: V) {
+        self.write_count += 1;
+        self.data.write(index, value);
+    }
+
+    fn capacity(&self) -> IndexType {
+        self.data.capacity()
+    }
+}
+
+/// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
+/// reading and writing each memory location.
+pub struct LinearTimeORAM<DB> {
+    /// The memory of the ORAM.
+    // Made this public for benchmarking, which ideally, I would not need to do.
+    pub physical_memory: DB,
+}
+
+impl<B: ArrayLength, DB: Database<BlockValue<B>>> ORAM<B> for LinearTimeORAM<DB>
 where
     <B as ArrayLength>::ArrayType<u8>: Copy,
 {
     fn new(block_capacity: IndexType) -> Self {
         Self {
-            physical_memory: SimpleDatabase::new(block_capacity),
+            physical_memory: DB::new(block_capacity),
         }
+    }
+
+    fn block_size(&self) -> BlockSizeType {
+        self.physical_memory.immutable_read(0).byte_length()
     }
 
     fn access(
@@ -145,7 +246,7 @@ where
         // This is a dummy value which will always be overwritten.
         let mut result = BlockValue::default();
 
-        for i in 0..self.physical_memory.len() {
+        for i in 0..self.physical_memory.capacity() {
             // Read from memory
             let entry = self.physical_memory.read(i);
 
@@ -177,7 +278,7 @@ where
     }
 
     fn block_capacity(&self) -> IndexType {
-        self.physical_memory.len()
+        self.physical_memory.capacity()
     }
 }
 
@@ -190,7 +291,7 @@ mod tests {
 
     #[test]
     fn simple_read_write() {
-        let mut oram: LinearTimeORAM<U64> = LinearTimeORAM::new(16);
+        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<U64>>> = LinearTimeORAM::new(16);
         let written_value = BlockValue(Aligned(GenericArray::generate(|_| 1)));
 
         oram.write(0, written_value);
@@ -205,7 +306,8 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(0);
 
-        let mut oram: LinearTimeORAM<U64> = LinearTimeORAM::new(BLOCK_CAPACITY);
+        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<U64>>> =
+            LinearTimeORAM::new(BLOCK_CAPACITY);
         let mut mirror_array = [BlockValue::default(); BLOCK_CAPACITY];
 
         for _ in 0..num_operations {
@@ -230,7 +332,8 @@ mod tests {
     #[test]
     fn check_alignment() {
         const BLOCK_CAPACITY: usize = 256;
-        let oram: LinearTimeORAM<U64> = LinearTimeORAM::new(BLOCK_CAPACITY);
+        let oram: LinearTimeORAM<SimpleDatabase<BlockValue<U64>>> =
+            LinearTimeORAM::new(BLOCK_CAPACITY);
         for block in &oram.physical_memory.0 {
             assert_eq!(mem::align_of_val(block), 64);
         }
