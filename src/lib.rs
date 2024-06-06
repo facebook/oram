@@ -20,7 +20,8 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, 
 
 type IndexType = usize;
 
-/// Represents an oblivious RAM mapping `IndexType` addresses to `BlockValue` values.
+/// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
+/// `B` represents the size of each block of the ORAM in bytes.
 pub trait ORAM<B: ArrayLength> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
     fn new(block_capacity: IndexType) -> Self;
