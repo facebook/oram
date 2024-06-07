@@ -4,7 +4,8 @@ Use `cargo bench` to run benchmarks.
 
 # Example benchmark output
 
-`spencerpeters@spencerpeters-mbp oram % cargo bench
+```
+spencerpeters@spencerpeters-mbp oram % cargo bench
    Compiling oram v0.1.0 (/Users/spencerpeters/oram)
     Finished `bench` profile [optimized] target(s) in 3.75s
      Running unittests src/lib.rs (target/release/deps/oram-d78a20f5a591c3c1)
@@ -162,4 +163,5 @@ A logical read to ORAM with parameters: (Capacity: 256 Blocksize: 4096) incurred
 A logical write to ORAM with parameters: (Capacity: 256 Blocksize: 64) incurred 256 physical reads and 256 physical writes.
 A logical write to ORAM with parameters: (Capacity: 256 Blocksize: 4096) incurred 256 physical reads and 256 physical writes.
 64 random ORAM operations with parameters: (Capacity: 256 Blocksize: 64, Ops: 64) incurred 16384 physical reads and 16384 physical writes.
-64 random ORAM operations with parameters: (Capacity: 256 Blocksize: 4096, Ops: 64) incurred 16384 physical reads and 16384 physical writes.`
+64 random ORAM operations with parameters: (Capacity: 256 Blocksize: 4096, Ops: 64) incurred 16384 physical reads and 16384 physical writes.
+```
