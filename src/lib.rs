@@ -17,6 +17,8 @@ use rand::{
 use std::ops::BitAnd;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
+pub mod path_oram;
+
 /// The numeric type used to specify the size of an ORAM in blocks, and to index into the ORAM.
 pub type IndexType = usize;
 /// The numeric type used to specify the size of each block of the ORAM in bytes.

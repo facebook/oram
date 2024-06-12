@@ -134,10 +134,10 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
         result
     }
 
-    fn new(N: usize) -> Self {
-        assert!(N.is_power_of_two());
+    fn new(block_capacity: usize) -> Self {
+        assert!(block_capacity.is_power_of_two());
 
-        let number_of_nodes = N;
+        let number_of_nodes = block_capacity;
         let physical_memory = SimpleDatabase::new(number_of_nodes);
         // physical_memory holds N buckets, each storing up to Z blocks.
         // The capacity of physical_memory in blocks is thus Z * N.
@@ -145,8 +145,8 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
 
         let stash = Vec::new();
 
-        let mut position_map = SimpleDatabase::new(N);
-        let height: u32 = N.ilog2();
+        let mut position_map = SimpleDatabase::new(block_capacity);
+        let height: u32 = block_capacity.ilog2();
         for i in 0..position_map.capacity() {
             position_map.write(i, CompleteBinaryTreeIndex::random_leaf(height));
         }
@@ -174,12 +174,6 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
 pub struct Bucket<const B: usize, const Z: usize> {
     // Should use GenericArray?
     blocks: [PathORAMBlock<B>; Z],
-}
-
-impl<const B: usize, const Z: usize> Bucket<B, Z> {
-    fn block_size(&self) -> usize {
-        B
-    }
 }
 
 impl<const B: usize, const Z: usize> Default for Bucket<B, Z> {
@@ -234,49 +228,8 @@ impl CompleteBinaryTreeIndex {
         CompleteBinaryTreeIndex::new(tree_height, random_index)
     }
 
-    fn get_depth(&self) -> u32 {
-        self.depth
-    }
-
-    fn is_root(&self) -> bool {
-        self.index == 1
-    }
-
     fn is_leaf(&self) -> bool {
         self.depth == self.tree_height
-    }
-
-    fn parent(&self) -> Option<Self> {
-        if self.is_root() {
-            None
-        } else {
-            Some(CompleteBinaryTreeIndex::new(
-                self.tree_height,
-                self.index >> 1,
-            ))
-        }
-    }
-
-    fn left_child(&self) -> Option<Self> {
-        if self.is_leaf() {
-            None
-        } else {
-            Some(CompleteBinaryTreeIndex::new(
-                self.tree_height,
-                self.index << 1,
-            ))
-        }
-    }
-
-    fn right_child(&self) -> Option<Self> {
-        if self.is_leaf() {
-            None
-        } else {
-            Some(CompleteBinaryTreeIndex::new(
-                self.tree_height,
-                (self.index << 1) + 1,
-            ))
-        }
     }
 }
 
@@ -288,38 +241,13 @@ impl Default for CompleteBinaryTreeIndex {
 
 #[cfg(test)]
 mod tests {
-    use super::{CompleteBinaryTreeIndex, DEFAULT_BLOCKS_PER_BUCKET};
+    use super::DEFAULT_BLOCKS_PER_BUCKET;
     use crate::{path_oram::NonrecursiveClientStashPathORAM, ORAM};
-
-    #[test]
-    fn play_around_with_index() {
-        let index011 = CompleteBinaryTreeIndex::new(3, 0b011);
-        let parent = index011.parent().unwrap();
-        let left_child = index011.left_child().unwrap();
-        let right_child = index011.right_child().unwrap();
-        assert_eq!(parent.index, 0b01);
-        assert_eq!(left_child.index, 0b110);
-        assert_eq!(right_child.index, 0b0111);
-        assert_eq!(index011.depth, 1);
-        assert_eq!(parent.depth, 0);
-        assert_eq!(left_child.depth, 2);
-        assert_eq!(right_child.depth, 2);
-
-        println!("{:?}", index011);
-        println!("{:?}", parent);
-        println!("{:?}", left_child);
-        println!("{:?}", right_child);
-    }
 
     #[test]
     fn play_around_with_path_oram() {
         let mut oram: NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET> =
             NonrecursiveClientStashPathORAM::new(64);
-        // let oram: PathORAM<
-        //     SimpleDatabase<Bucket<BlockValue<64>, DEFAULT_BLOCKS_PER_BUCKET>>,
-        //     SimpleDatabase<CompleteBinaryTreeIndex>,
-        //     DEFAULT_BLOCKS_PER_BUCKET,
-        // > = PathORAM::new(64);
         println!("{:?}", oram.read(0));
     }
 }
