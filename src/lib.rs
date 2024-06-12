@@ -263,11 +263,12 @@ mod tests {
 
     #[test]
     fn check_alignment() {
-        const BLOCK_CAPACITY: usize = 256;
+        let irrelevant_capacity = 256;
+        let expected_alignment = 64;
         let oram: LinearTimeORAM<SimpleDatabase<BlockValue<64>>> =
-            LinearTimeORAM::new(BLOCK_CAPACITY);
+            LinearTimeORAM::new(irrelevant_capacity);
         for block in &oram.physical_memory.0 {
-            assert_eq!(mem::align_of_val(block), 64);
+            assert_eq!(mem::align_of_val(block), expected_alignment);
         }
     }
 
