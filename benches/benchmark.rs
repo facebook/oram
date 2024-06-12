@@ -15,7 +15,7 @@ use oram::{
 };
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
 
-// We will benchmark each of these capacities for block sizes of 64 and 4096 bytes.
+// We will benchmark each of these capacities for block sizes of 64 and 256 bytes.
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
 
 criterion_group!(
