@@ -1,5 +1,6 @@
 extern crate criterion;
 use core::fmt;
+use std::fmt::Display;
 
 use criterion::{
     black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId,
@@ -11,8 +12,10 @@ use oram::{
 };
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
 
-// We will benchmark each of these capacities for block sizes of 64 and 4096 bytes.
+// We will benchmark capacities of 64 and 256 for block sizes of 64 and 4096 bytes.
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
+const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
+const BLOCK_SIZES_TO_BENCHMARK: [usize; 2] = [64, 4096];
 
 criterion_group!(
     benches,
@@ -24,38 +27,102 @@ criterion_group!(
 );
 criterion_main!(benches);
 
+fn print_table_row<A: Display, B: Display, C: Display, D: Display>(s1: A, s2: B, s3: C, s4: D) {
+    println!(
+        "{0: <15} | {1: <15} | {2: <15} | {3: <15}",
+        s1, s2, s3, s4
+    )
+}
+
+fn print_table_header() {
+    // println!(
+    //     "{0: <15} | {1: <15} | {2: <15} | {3: <15}",
+    //     "ORAM Capacity", "ORAM Blocksize", "Physical Reads", "Physical Writes"
+    // );
+    print_table_row("ORAM Capacity", "ORAM Blocksize", "Physical Reads", "Physical Writes");
+}
+
+// fn print_random_accesses_table_header() {
+//     println!(
+//         "{0: <15} | {1: <15} | {2: <15} | {3: <15} | {4: <15}",
+//         "ORAM Capacity", "ORAM Blocksize", "# Operations", "Physical Reads", "Physical Writes"
+//     );
+// }
+
 fn count_accesses(_: &mut Criterion) {
+    println!("Physical reads and writes incurred by 1 ORAM read:");
+    print_table_header();
     for capacity in CAPACITIES_TO_BENCHMARK {
-        count_accesses_on_read(capacity);
+        for B in BLOCK_SIZES_TO_BENCHMARK {
+            count_accesses_on_read::<{B}>(capacity);
+        }
+    }
+
+    println!("Physical reads and writes incurred by 1 ORAM write:");
+    print_table_header();
+    for capacity in CAPACITIES_TO_BENCHMARK {
         count_accesses_on_write(capacity);
+    }
+
+    println!("Physical reads and writes incurred by {} random ORAM operations:", NUM_RANDOM_OPERATIONS_TO_RUN);
+    print_table_header();
+    for capacity in CAPACITIES_TO_BENCHMARK {
         count_accesses_on_random_workload(capacity);
     }
 }
 
-fn count_accesses_on_read(capacity: usize) {
-    let mut oram64: LinearTimeORAM<CountAccessesDatabase<BlockValue<64>>> =
+fn count_accesses_on_read<const B: usize>(capacity: usize) {
+    let mut oram: LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>> =
         LinearTimeORAM::new(capacity);
-    oram64.read(black_box(0));
-    let mut oram4096: LinearTimeORAM<CountAccessesDatabase<BlockValue<4096>>> =
-        LinearTimeORAM::new(capacity);
-    oram4096.read(black_box(0));
+    oram.read(black_box(0));
 
-    let read_count64 = oram64.physical_memory.get_read_count();
-    let write_count64 = oram64.physical_memory.get_write_count();
-    let rwparameters64 = ReadWriteParameters {
-        capacity: capacity,
-        block_size: 64,
-    };
-    println!("A logical read to ORAM with parameters: {} incurred {} physical reads and {} physical writes.", rwparameters64, read_count64, write_count64);
+    let read_count = oram.physical_memory.get_read_count();
+    let write_count= oram.physical_memory.get_write_count();
+    // let rwparameters64 = ReadWriteParameters {
+    //     capacity: capacity,
+    //     block_size: 64,
+    // };
+    print_table_row(capacity, B, read_count, write_count);
+    // println!("A logical read to ORAM with parameters: {} incurred {} physical reads and {} physical writes.", rwparameters64, read_count64, write_count64);
 
-    let read_count4096 = oram4096.physical_memory.get_read_count();
-    let write_count4096 = oram4096.physical_memory.get_write_count();
-    let rwparameters4096 = ReadWriteParameters {
-        capacity: capacity,
-        block_size: 4096,
-    };
-    println!("A logical read to ORAM with parameters: {} incurred {} physical reads and {} physical writes.", rwparameters4096, read_count4096, write_count4096);
+    // let read_count4096 = oram4096.physical_memory.get_read_count();
+    // let write_count4096 = oram4096.physical_memory.get_write_count();
+    // let rwparameters4096 = ReadWriteParameters {
+    //     capacity: capacity,
+    //     block_size: 4096,
+    // };
+    // print_table_row(capacity, 4096, read_count4096, write_count4096);
+
+    // println!("A logical read to ORAM with parameters: {} incurred {} physical reads and {} physical writes.", rwparameters4096, read_count4096, write_count4096);
 }
+
+// fn count_accesses_on_read(capacity: usize) {
+//     let mut oram64: LinearTimeORAM<CountAccessesDatabase<BlockValue<64>>> =
+//         LinearTimeORAM::new(capacity);
+//     oram64.read(black_box(0));
+//     let mut oram4096: LinearTimeORAM<CountAccessesDatabase<BlockValue<4096>>> =
+//         LinearTimeORAM::new(capacity);
+//     oram4096.read(black_box(0));
+
+//     let read_count64 = oram64.physical_memory.get_read_count();
+//     let write_count64 = oram64.physical_memory.get_write_count();
+//     // let rwparameters64 = ReadWriteParameters {
+//     //     capacity: capacity,
+//     //     block_size: 64,
+//     // };
+//     print_table_row(capacity, 64, read_count64, write_count64);
+//     // println!("A logical read to ORAM with parameters: {} incurred {} physical reads and {} physical writes.", rwparameters64, read_count64, write_count64);
+
+//     let read_count4096 = oram4096.physical_memory.get_read_count();
+//     let write_count4096 = oram4096.physical_memory.get_write_count();
+//     // let rwparameters4096 = ReadWriteParameters {
+//     //     capacity: capacity,
+//     //     block_size: 4096,
+//     // };
+//     print_table_row(capacity, 4096, read_count4096, write_count4096);
+
+//     // println!("A logical read to ORAM with parameters: {} incurred {} physical reads and {} physical writes.", rwparameters4096, read_count4096, write_count4096);
+// }
 
 fn count_accesses_on_write(capacity: usize) {
     let mut oram64: LinearTimeORAM<CountAccessesDatabase<BlockValue<64>>> =
