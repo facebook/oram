@@ -10,7 +10,6 @@
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
 use aligned::{Aligned, A64};
-use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -25,7 +24,7 @@ pub type BlockSizeType = usize;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait ORAM<B: ArrayLength> {
+pub trait ORAM<const B: BlockSizeType> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
     fn new(block_capacity: IndexType) -> Self
     where
@@ -60,44 +59,34 @@ pub trait ORAM<B: ArrayLength> {
 }
 
 /// The smallest unit of memory readable/writable by the ORAM.
-#[derive(Clone, Debug, PartialEq)]
-pub struct BlockValue<B: ArrayLength>(Aligned<A64, GenericArray<u8, B>>);
-impl<B: ArrayLength> Copy for BlockValue<B> where B::ArrayType<u8>: Copy {}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockValue<const B: BlockSizeType>(Aligned<A64, [u8; B]>);
 
-impl<B: ArrayLength> BlockValue<B>
-where
-    <B as ArrayLength>::ArrayType<u8>: Copy,
-{
+impl<const B: BlockSizeType> BlockValue<B> {
     /// Returns the length in bytes of this `BlockValue`.
     pub fn byte_length(&self) -> BlockSizeType {
-        self.0.len()
+        B
     }
 
     /// Instantiates a `BlockValue` from an array of `BLOCK_SIZE` bytes.
-    pub fn from_byte_array(data: &GenericArray<u8, B>) -> Self {
-        Self(Aligned(*data))
+    pub fn from_byte_array(data: [u8; B]) -> Self {
+        Self(Aligned(data))
     }
 }
 
-impl<B: ArrayLength> From<BlockValue<B>> for GenericArray<u8, B>
-where
-    <B as ArrayLength>::ArrayType<u8>: Copy,
-{
+impl<const B: BlockSizeType> From<BlockValue<B>> for [u8; B] {
     fn from(value: BlockValue<B>) -> Self {
         *value.0
     }
 }
 
-impl<B: ArrayLength> Default for BlockValue<B> {
+impl<const B: BlockSizeType> Default for BlockValue<B> {
     fn default() -> Self {
-        BlockValue::<B>(Aligned(GenericArray::generate(|_| 0)))
+        BlockValue::<B>(Aligned([0u8; B]))
     }
 }
 
-impl<B: ArrayLength> ConditionallySelectable for BlockValue<B>
-where
-    <B as ArrayLength>::ArrayType<u8>: Copy,
-{
+impl<const B: BlockSizeType> ConditionallySelectable for BlockValue<B> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let mut result = BlockValue::default();
         for i in 0..a.byte_length() {
@@ -107,10 +96,7 @@ where
     }
 }
 
-impl<B: ArrayLength> Distribution<BlockValue<B>> for Standard
-where
-    <B as ArrayLength>::ArrayType<u8>: Copy,
-{
+impl<const B: BlockSizeType> Distribution<BlockValue<B>> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue<B> {
         let mut result = BlockValue::default();
         for i in 0..result.byte_length() {
@@ -129,8 +115,6 @@ pub trait Database<V: Default + Copy>: Sized {
     /// Reads the value stored at `index`.
     fn read(&mut self, index: IndexType) -> V;
     /// Reads the value stored at `index`, without any instrumentation or other side effects.
-    fn immutable_read(&self, index: IndexType) -> V;
-    /// Replaces the value stored at `index` with `value`.
     fn write(&mut self, index: IndexType, value: V);
 }
 
@@ -147,10 +131,6 @@ impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
     }
 
     fn read(&mut self, index: IndexType) -> V {
-        self.0[index]
-    }
-
-    fn immutable_read(&self, index: IndexType) -> V {
         self.0[index]
     }
 
@@ -192,10 +172,6 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
         self.data.read(index)
     }
 
-    fn immutable_read(&self, index: IndexType) -> V {
-        self.data.immutable_read(index)
-    }
-
     fn write(&mut self, index: IndexType, value: V) {
         self.write_count += 1;
         self.data.write(index, value);
@@ -214,10 +190,7 @@ pub struct LinearTimeORAM<DB> {
     pub physical_memory: DB,
 }
 
-impl<B: ArrayLength, DB: Database<BlockValue<B>>> ORAM<B> for LinearTimeORAM<DB>
-where
-    <B as ArrayLength>::ArrayType<u8>: Copy,
-{
+impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> ORAM<B> for LinearTimeORAM<DB> {
     fn new(block_capacity: IndexType) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
@@ -225,7 +198,7 @@ where
     }
 
     fn block_size(&self) -> BlockSizeType {
-        self.physical_memory.immutable_read(0).byte_length()
+        B
     }
 
     fn access(
@@ -285,14 +258,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use generic_array::typenum::U64;
     use rand::{rngs::StdRng, SeedableRng};
     use std::mem;
 
     #[test]
     fn simple_read_write() {
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<U64>>> = LinearTimeORAM::new(16);
-        let written_value = BlockValue(Aligned(GenericArray::generate(|_| 1)));
+        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<64>>> = LinearTimeORAM::new(16);
+        let written_value = BlockValue(Aligned([1u8; 64]));
 
         oram.write(0, written_value);
         let read_value = oram.read(0);
@@ -306,7 +278,7 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(0);
 
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<U64>>> =
+        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<64>>> =
             LinearTimeORAM::new(BLOCK_CAPACITY);
         let mut mirror_array = [BlockValue::default(); BLOCK_CAPACITY];
 
@@ -332,7 +304,7 @@ mod tests {
     #[test]
     fn check_alignment() {
         const BLOCK_CAPACITY: usize = 256;
-        let oram: LinearTimeORAM<SimpleDatabase<BlockValue<U64>>> =
+        let oram: LinearTimeORAM<SimpleDatabase<BlockValue<64>>> =
             LinearTimeORAM::new(BLOCK_CAPACITY);
         for block in &oram.physical_memory.0 {
             assert_eq!(mem::align_of_val(block), 64);
