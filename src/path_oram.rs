@@ -6,10 +6,11 @@
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
 //! An implementation of Path ORAM.
+// TODO replace thread_rng with actual rng
 
 use crate::{BlockValue, Database, IndexType, SimpleDatabase, ORAM};
-use rand::{thread_rng, Rng};
-use std::ops::BitAnd;
+use rand::{seq::SliceRandom, thread_rng, Rng};
+use std::{mem::size_of_val, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 const MAXIMUM_TREE_HEIGHT: u32 = 63;
@@ -62,6 +63,8 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
         optional_new_value: subtle::CtOption<BlockValue<B>>,
     ) -> BlockValue<B> {
         let leaf = self.position_map.read(index);
+        let new_position = CompleteBinaryTreeIndex::random_leaf(self.height);
+        self.position_map.write(index, new_position);
 
         // Read all blocks on the relevant path into the stash
         for depth in 0..self.height {
@@ -87,6 +90,9 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
             block
                 .value
                 .conditional_assign(&value_to_write, should_write);
+            block
+                .position
+                .conditional_assign(&new_position.index, should_write);
         }
 
         // Working from leaves to root, write stash back into path, obliviously but inefficiently.
@@ -99,36 +105,32 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
                 // For each slot on the relevant path...
                 let slot = &mut new_bucket.blocks[slot_index];
 
-                // Linearly scan the stash for a block that can be written into that slot.
+                // Linearly scan the stash for a block that can be written into that slot,
+                // removing dummy blocks as we go.
                 let mut written: Choice = 0.into();
 
-                for stash_index in 0..self.stash.len() {
+                for stash_index in (0..self.stash.len()).rev() {
                     let stashed_block = &mut self.stash[stash_index];
+                    if stashed_block.address == PathORAMBlock::<B>::DUMMY_ADDRESS {
+                        self.stash.remove(stash_index);
+                    } else {
+                        let position = stashed_block.position;
+                        let position_index = CompleteBinaryTreeIndex::new(self.height, position);
+                        let assigned_bucket_address =
+                            CompleteBinaryTreeIndex::node_on_path(position_index, depth);
+                        let position_matches =
+                            bucket_address.index.ct_eq(&assigned_bucket_address.index);
+                        let should_write = position_matches.bitand(!written);
 
-                    let position = stashed_block.position;
-                    let position_index = CompleteBinaryTreeIndex::new(self.height, position);
-                    let assigned_bucket_address =
-                        CompleteBinaryTreeIndex::node_on_path(position_index, depth);
-                    let position_matches =
-                        bucket_address.index.ct_eq(&assigned_bucket_address.index);
-                    let should_write = position_matches.bitand(!written);
-
-                    // If found, write the slot and overwrite the stash block with a dummy block.
-                    slot.conditional_assign(stashed_block, should_write);
-                    stashed_block.conditional_assign(&PathORAMBlock::default(), should_write);
-                    written.conditional_assign(&(1.into()), should_write);
+                        // If found, write the slot and overwrite the stash block with a dummy block.
+                        slot.conditional_assign(stashed_block, should_write);
+                        stashed_block.conditional_assign(&PathORAMBlock::default(), should_write);
+                        written.conditional_assign(&(1.into()), should_write);
+                    }
                 }
             }
             self.physical_memory
                 .write(bucket_address.index as usize, new_bucket);
-
-            // Remove dummy blocks from the stash.
-            for stash_index in (0..self.stash.len()).rev() {
-                let stash_block = &mut self.stash[stash_index];
-                if stash_block.address == PathORAMBlock::<B>::DUMMY_ADDRESS {
-                    self.stash.remove(stash_index);
-                }
-            }
         }
 
         result
@@ -138,17 +140,42 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
         assert!(block_capacity.is_power_of_two());
 
         let number_of_nodes = block_capacity;
-        let physical_memory = SimpleDatabase::new(number_of_nodes);
+
         // physical_memory holds N buckets, each storing up to Z blocks.
         // The capacity of physical_memory in blocks is thus Z * N.
         // The number of leaves is N / 2, which the original Path ORAM paper's experiments found was sufficient.
+        let mut physical_memory = SimpleDatabase::new(number_of_nodes);
 
         let stash = Vec::new();
 
+        let height: u32 = block_capacity.ilog2() - 1;
+
         let mut position_map = SimpleDatabase::new(block_capacity);
-        let height: u32 = block_capacity.ilog2();
         for i in 0..position_map.capacity() {
             position_map.write(i, CompleteBinaryTreeIndex::random_leaf(height));
+        }
+
+        // We initialize the physical memory with blocks containing 0
+        let permuted_addresses = 0..block_capacity;
+        let mut permuted_addresses = Vec::from_iter(permuted_addresses);
+        let permuted_addresses = permuted_addresses.as_mut_slice();
+        permuted_addresses.shuffle(&mut thread_rng());
+
+        let first_leaf_index = 2u64.pow(height) as usize;
+        let last_leaf_index = (2 * first_leaf_index) - 1;
+
+        let addresses_per_leaf = 2;
+        for leaf_index in first_leaf_index..=last_leaf_index {
+            let mut bucket_to_write = Bucket::<B, Z>::default();
+            for block_index in 0..addresses_per_leaf {
+                let address_index = (leaf_index - first_leaf_index) * 2 + block_index;
+                bucket_to_write.blocks[block_index] = PathORAMBlock::<B> {
+                    value: BlockValue::<B>::default(),
+                    address: permuted_addresses[address_index],
+                    position: leaf_index as u64,
+                }
+            }
+            physical_memory.write(leaf_index, bucket_to_write);
         }
 
         Self {
@@ -172,7 +199,6 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
 #[derive(Clone, Copy)]
 /// A Path ORAM bucket.
 pub struct Bucket<const B: usize, const Z: usize> {
-    // Should use GenericArray?
     blocks: [PathORAMBlock<B>; Z],
 }
 
@@ -198,13 +224,13 @@ pub struct CompleteBinaryTreeIndex {
 
 impl CompleteBinaryTreeIndex {
     fn new(tree_height: u32, index: u64) -> Self {
-        assert!(index != 0);
+        assert_ne!(index, 0);
         assert!(tree_height <= MAXIMUM_TREE_HEIGHT);
         let tree_size = 2u64.pow(tree_height + 1);
         assert!(index < tree_size);
 
         let leading_zeroes = index.leading_zeros();
-        let index_bitlength = 64;
+        let index_bitlength = 8 * (size_of_val(&index) as u32);
         let depth = index_bitlength - leading_zeroes - 1;
         CompleteBinaryTreeIndex {
             tree_height,
@@ -223,9 +249,10 @@ impl CompleteBinaryTreeIndex {
     }
 
     fn random_leaf(tree_height: u32) -> Self {
-        let random_index =
-            2u64.pow(tree_height - 1) + thread_rng().gen_range(0..2u64.pow(tree_height - 1));
-        CompleteBinaryTreeIndex::new(tree_height, random_index)
+        let random_index = 2u64.pow(tree_height) + thread_rng().gen_range(0..2u64.pow(tree_height));
+        let result = CompleteBinaryTreeIndex::new(tree_height, random_index);
+        assert!(result.is_leaf());
+        result
     }
 
     fn is_leaf(&self) -> bool {
@@ -248,6 +275,6 @@ mod tests {
     fn play_around_with_path_oram() {
         let mut oram: NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET> =
             NonrecursiveClientStashPathORAM::new(64);
-        println!("{:?}", oram.read(0));
+        println!("{:?}", oram.read(1));
     }
 }

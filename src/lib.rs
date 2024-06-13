@@ -116,7 +116,7 @@ pub trait Database<V: Default + Copy>: Sized {
     fn capacity(&self) -> IndexType;
     /// Reads the value stored at `index`.
     fn read(&mut self, index: IndexType) -> V;
-    /// Reads the value stored at `index`, without any instrumentation or other side effects.
+    /// Writes the value stored at `index`.
     fn write(&mut self, index: IndexType, value: V);
 }
 
