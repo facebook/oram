@@ -255,132 +255,83 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> ORAM<B> for LinearTime
     }
 }
 
+pub mod test_utils;
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::{rngs::StdRng, SeedableRng};
     use std::mem;
+    use test_utils::{
+        test_correctness_linear_workload, test_correctness_random_workload, LinearORAM,
+    };
 
     #[test]
-    fn check_alignment<const B: usize, T: ORAM<B>>() {
-        let irrelevant_capacity = 256;
+    fn check_alignment() {
+        let irrelevant_capacity = 64;
         let expected_alignment = 64;
-        let oram: LinearTimeORAM<SimpleDatabase<BlockValue<64>>> =
-            LinearTimeORAM::new(irrelevant_capacity);
-        for block in &oram.physical_memory.0 {
+        let database = SimpleDatabase::<BlockValue<64>>::new(irrelevant_capacity);
+        for block in &database.0 {
             assert_eq!(mem::align_of_val(block), expected_alignment);
-        }
-    }
-
-    fn test_correctness_random_workload<const B: usize>(capacity: usize, num_operations: u32) {
-        let mut rng = StdRng::seed_from_u64(0);
-
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<B>>> = LinearTimeORAM::new(capacity);
-        let mut mirror_array = vec![BlockValue::default(); capacity];
-
-        for _ in 0..num_operations {
-            let random_index = rng.gen_range(0..capacity);
-            let random_block_value = rng.gen();
-
-            let read_versus_write: bool = rng.gen();
-
-            if read_versus_write {
-                assert_eq!(oram.read(random_index), mirror_array[random_index]);
-            } else {
-                oram.write(random_index, random_block_value);
-                mirror_array[random_index] = random_block_value;
-            }
-        }
-
-        for index in 0..capacity {
-            assert_eq!(oram.read(index), mirror_array[index], "{index}")
         }
     }
 
     #[test]
     fn test_correctness_random_workload_1_64_10000() {
-        test_correctness_random_workload::<1>(64, 10000);
+        test_correctness_random_workload::<1, LinearORAM<1>>(64, 10000);
     }
 
     #[test]
     fn test_correctness_random_workload_64_1_10000() {
-        test_correctness_random_workload::<64>(1, 10000);
+        test_correctness_random_workload::<64, LinearORAM<64>>(1, 10000);
     }
 
     #[test]
     fn test_correctness_random_workload_64_64_10000() {
-        test_correctness_random_workload::<64>(64, 10000);
+        test_correctness_random_workload::<64, LinearORAM<64>>(64, 10000);
     }
 
     #[test]
     fn test_correctness_random_workload_64_256_10000() {
-        test_correctness_random_workload::<64>(256, 10000);
+        test_correctness_random_workload::<64, LinearORAM<64>>(256, 10000);
     }
 
     #[test]
     fn test_correctness_random_workload_4096_64_1000() {
-        test_correctness_random_workload::<4096>(200, 1000);
+        test_correctness_random_workload::<4096, LinearORAM<4096>>(200, 1000);
     }
 
     #[test]
     fn test_correctness_random_workload_4096_256_1000() {
-        test_correctness_random_workload::<4096>(256, 1000);
-    }
-
-    fn test_correctness_linear_workload<const B: usize>(capacity: usize, num_passes: u32) {
-        let mut rng = StdRng::seed_from_u64(0);
-
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<B>>> = LinearTimeORAM::new(capacity);
-
-        let mut mirror_array = vec![BlockValue::default(); capacity];
-
-        for _ in 0..num_passes {
-            for index in 0..capacity {
-                let random_block_value = rng.gen();
-
-                let read_versus_write: bool = rng.gen();
-
-                if read_versus_write {
-                    assert_eq!(oram.read(index), mirror_array[index]);
-                } else {
-                    oram.write(index, random_block_value);
-                    mirror_array[index] = random_block_value;
-                }
-            }
-        }
-
-        for index in 0..capacity {
-            assert_eq!(oram.read(index), mirror_array[index], "{index}")
-        }
+        test_correctness_random_workload::<4096, LinearORAM<4096>>(256, 1000);
     }
 
     #[test]
     fn test_correctness_linear_workload_1_64_100() {
-        test_correctness_linear_workload::<1>(64, 100);
+        test_correctness_linear_workload::<1, LinearORAM<1>>(64, 100);
     }
 
     #[test]
     fn test_correctness_linear_workload_64_1_100() {
-        test_correctness_linear_workload::<64>(1, 100);
+        test_correctness_linear_workload::<64, LinearORAM<64>>(1, 100);
     }
 
     #[test]
     fn test_correctness_linear_workload_64_64_100() {
-        test_correctness_linear_workload::<64>(64, 100);
+        test_correctness_linear_workload::<64, LinearORAM<64>>(64, 100);
     }
 
     #[test]
     fn test_correctness_linear_workload_64_256_100() {
-        test_correctness_linear_workload::<64>(256, 100);
+        test_correctness_linear_workload::<64, LinearORAM<64>>(256, 100);
     }
 
     #[test]
     fn test_correctness_linear_workload_4096_64_10() {
-        test_correctness_linear_workload::<4096>(64, 10);
+        test_correctness_linear_workload::<4096, LinearORAM<4096>>(64, 10);
     }
 
     #[test]
     fn test_correctness_linear_workload_4096_256_2() {
-        test_correctness_linear_workload::<4096>(256, 2);
+        test_correctness_linear_workload::<4096, LinearORAM<4096>>(256, 2);
     }
 }
