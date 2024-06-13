@@ -262,7 +262,7 @@ mod tests {
     use std::mem;
 
     #[test]
-    fn check_alignment() {
+    fn check_alignment<const B: usize, T: ORAM<B>>() {
         let irrelevant_capacity = 256;
         let expected_alignment = 64;
         let oram: LinearTimeORAM<SimpleDatabase<BlockValue<64>>> =
