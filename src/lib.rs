@@ -14,10 +14,8 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::{marker::PhantomData, ops::BitAnd};
+use std::ops::BitAnd;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
-
-pub mod path_oram;
 
 /// The numeric type used to specify the size of an ORAM in blocks, and to index into the ORAM.
 pub type IndexType = usize;
@@ -26,9 +24,9 @@ pub type BlockSizeType = usize;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait ORAM<const B: BlockSizeType, R: Rng> {
+pub trait ORAM<const B: BlockSizeType> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
-    fn new(block_capacity: IndexType, rng: R) -> Self
+    fn new(block_capacity: IndexType) -> Self
     where
         Self: Sized;
 
@@ -116,12 +114,11 @@ pub trait Database<V: Default + Copy>: Sized {
     fn capacity(&self) -> IndexType;
     /// Reads the value stored at `index`.
     fn read(&mut self, index: IndexType) -> V;
-    /// Writes the value stored at `index`.
+    /// Reads the value stored at `index`, without any instrumentation or other side effects.
     fn write(&mut self, index: IndexType, value: V);
 }
 
 /// A simple Database that stores its data as a Vec.
-#[derive(Debug)]
 pub struct SimpleDatabase<V>(Vec<V>);
 
 impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
@@ -143,7 +140,6 @@ impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
 }
 
 /// A Database that counts reads and writes.
-#[derive(Debug)]
 pub struct CountAccessesDatabase<V> {
     data: SimpleDatabase<V>,
     read_count: u128,
@@ -188,23 +184,16 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
-
-pub struct LinearTimeORAM<DB, R: Rng> {
+pub struct LinearTimeORAM<DB> {
     /// The memory of the ORAM.
     // Made this public for benchmarking, which ideally, I would not need to do.
     pub physical_memory: DB,
-    // rng: R,
-    rng: PhantomData<R>,
 }
 
-impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> ORAM<B, R>
-    for LinearTimeORAM<DB, R>
-{
-    fn new(block_capacity: IndexType, _: R) -> Self {
+impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> ORAM<B> for LinearTimeORAM<DB> {
+    fn new(block_capacity: IndexType) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
-            // rng: rng,
-            rng: PhantomData,
         }
     }
 
@@ -266,7 +255,7 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> ORAM<B, R>
     }
 }
 
-pub mod test_utils;
+mod test_utils;
 
 #[cfg(test)]
 mod tests {
