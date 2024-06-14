@@ -255,13 +255,18 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> ORAM<B> for LinearTime
     }
 }
 
+/// A type alias for a simple `LinearTimeORAM` monomorphization.
+pub type LinearORAM<const B: usize> = LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>>;
+
 mod test_utils;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::mem;
-    use test_utils::{test_correctness_linear_workload, test_correctness_random_workload, create_correctness_test};
+    use test_utils::{
+        create_correctness_test, test_correctness_linear_workload, test_correctness_random_workload,
+    };
 
     #[test]
     fn check_alignment() {
@@ -279,7 +284,13 @@ mod tests {
     create_correctness_test!(test_correctness_random_workload, LinearORAM, 64, 1, 10000);
     create_correctness_test!(test_correctness_random_workload, LinearORAM, 64, 64, 10000);
     create_correctness_test!(test_correctness_random_workload, LinearORAM, 4096, 64, 1000);
-    create_correctness_test!(test_correctness_random_workload, LinearORAM, 4096, 256, 1000);
+    create_correctness_test!(
+        test_correctness_random_workload,
+        LinearORAM,
+        4096,
+        256,
+        1000
+    );
 
     create_correctness_test!(test_correctness_linear_workload, LinearORAM, 64, 256, 100);
     create_correctness_test!(test_correctness_linear_workload, LinearORAM, 1, 64, 100);
