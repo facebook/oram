@@ -1,24 +1,31 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+//
+// This source code is dual-licensed under either the MIT license found in the
+// LICENSE-MIT file in the root directory of this source tree or the Apache
+// License, Version 2.0 found in the LICENSE-APACHE file in the root directory
+// of this source tree. You may select, at your option, one of the above-listed licenses.
+
+//! This module contains benchmarks for the ORAM crate.
+
 extern crate criterion;
 use core::fmt;
 use std::fmt::Display;
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use oram::{BlockValue, CountAccessesDatabase, IndexType, LinearTimeORAM, ORAM};
+use oram::{BlockValue, IndexType, ORAM};
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
+
+use oram::test_utils::{LinearORAM, VecPathORAM};
 
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
-
-// Here, all benchmarks are run for block sizes of 64 and 4096.
 
 trait Instrumented {
     fn get_read_count(&self) -> u128;
     fn get_write_count(&self) -> u128;
     fn short_name() -> String;
 }
-
-type LinearORAM<const B: usize> = LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>>;
 
 impl<const B: usize> Instrumented for LinearORAM<B> {
     fn get_read_count(&self) -> u128 {
@@ -34,6 +41,21 @@ impl<const B: usize> Instrumented for LinearORAM<B> {
     }
 }
 
+impl<const B: usize> Instrumented for VecPathORAM<B> {
+    fn get_read_count(&self) -> u128 {
+        return self.physical_memory.get_read_count();
+    }
+
+    fn get_write_count(&self) -> u128 {
+        return self.physical_memory.get_write_count();
+    }
+
+    fn short_name() -> String {
+        "VecPathORAM".into()
+    }
+}
+
+// Here, all benchmarks are run for linear and path ORAMs, and block sizes of 64 and 4096.
 criterion_group!(
     benches,
     benchmark_initialization::<64, LinearORAM<64>>,
@@ -53,12 +75,29 @@ criterion_group!(
     print_random_operations_header,
     count_accesses_on_random_workload::<64, LinearORAM<64>>,
     count_accesses_on_random_workload::<4096, LinearORAM<4096>>,
+    benchmark_initialization::<64, VecPathORAM<64>>,
+    benchmark_initialization::<4096, VecPathORAM<4096>>,
+    benchmark_read::<64, VecPathORAM<64>>,
+    benchmark_read::<4096, VecPathORAM<4096>>,
+    benchmark_write::<64, VecPathORAM<64>>,
+    benchmark_write::<4096, VecPathORAM<4096>>,
+    benchmark_random_operations::<64, VecPathORAM<64>>,
+    benchmark_random_operations::<4096, VecPathORAM<4096>>,
+    print_read_header,
+    count_accesses_on_read::<64, VecPathORAM<64>>,
+    count_accesses_on_read::<4096, VecPathORAM<4096>>,
+    print_write_header,
+    count_accesses_on_write::<64, VecPathORAM<64>>,
+    count_accesses_on_write::<4096, VecPathORAM<4096>>,
+    print_random_operations_header,
+    count_accesses_on_random_workload::<64, VecPathORAM<64>>,
+    count_accesses_on_random_workload::<4096, VecPathORAM<4096>>,
 );
 criterion_main!(benches);
 
-fn count_accesses_on_read<const B: usize, T: ORAM<B> + Instrumented>(_: &mut Criterion) {
+fn count_accesses_on_read<const B: usize, T: ORAM<B, StdRng> + Instrumented>(_: &mut Criterion) {
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity);
+        let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
         oram.read(black_box(0));
 
         let read_count = oram.get_read_count();
@@ -68,9 +107,9 @@ fn count_accesses_on_read<const B: usize, T: ORAM<B> + Instrumented>(_: &mut Cri
     }
 }
 
-fn count_accesses_on_write<const B: usize, T: ORAM<B> + Instrumented>(_: &mut Criterion) {
+fn count_accesses_on_write<const B: usize, T: ORAM<B, StdRng> + Instrumented>(_: &mut Criterion) {
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity);
+        let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
         oram.write(black_box(0), black_box(BlockValue::default()));
 
         let read_count = oram.get_read_count();
@@ -80,7 +119,9 @@ fn count_accesses_on_write<const B: usize, T: ORAM<B> + Instrumented>(_: &mut Cr
     }
 }
 
-fn count_accesses_on_random_workload<const B: usize, T: ORAM<B> + Instrumented>(_: &mut Criterion) {
+fn count_accesses_on_random_workload<const B: usize, T: ORAM<B, StdRng> + Instrumented>(
+    _: &mut Criterion,
+) {
     for capacity in CAPACITIES_TO_BENCHMARK {
         let number_of_operations_to_run = 64usize;
 
@@ -96,8 +137,8 @@ fn count_accesses_on_random_workload<const B: usize, T: ORAM<B> + Instrumented>(
             index_randomness[i] = rng.gen_range(0..capacity);
         }
 
-        let mut oram = T::new(capacity);
-        run_many_random_accesses(
+        let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
+        run_many_random_accesses::<B, T>(
             &mut oram,
             number_of_operations_to_run,
             black_box(&index_randomness),
@@ -112,7 +153,7 @@ fn count_accesses_on_random_workload<const B: usize, T: ORAM<B> + Instrumented>(
     }
 }
 
-fn benchmark_initialization<const B: usize, T: ORAM<B> + Instrumented>(c: &mut Criterion) {
+fn benchmark_initialization<const B: usize, T: ORAM<B, StdRng> + Instrumented>(c: &mut Criterion) {
     let mut group = c.benchmark_group(T::short_name() + "initialization");
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
         group.bench_with_input(
@@ -121,15 +162,30 @@ fn benchmark_initialization<const B: usize, T: ORAM<B> + Instrumented>(c: &mut C
                 block_size: B,
             }),
             capacity,
-            |b, &capacity| b.iter(|| T::new(capacity)),
+            |b, capacity|  b.iter(|| T::new(*capacity, StdRng::seed_from_u64(0))),
         );
+        // Surprisingly, when I tried to factor out the StdRng creation time as below, the benchmarks got slower,
+        // so there is something I don't understand. Deferring thinking about this for now.
+        // group.bench_function(
+        //     BenchmarkId::from_parameter(ReadWriteParameters {
+        //         capacity: *capacity,
+        //         block_size: B,
+        //     }),
+        //     |b| {
+        //         b.iter_batched(
+        //             || rng.clone(),
+        //             |rng| T::new(*capacity, rng),
+        //             BatchSize::SmallInput,
+        //         )
+        //     },
+        // );
     }
 }
 
-fn benchmark_read<const B: usize, T: ORAM<B> + Instrumented>(c: &mut Criterion) {
+fn benchmark_read<const B: usize, T: ORAM<B, StdRng> + Instrumented>(c: &mut Criterion) {
     let mut group = c.benchmark_group(T::short_name() + "read");
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram = T::new(*capacity);
+        let mut oram = T::new(*capacity, StdRng::seed_from_u64(0));
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
@@ -140,10 +196,10 @@ fn benchmark_read<const B: usize, T: ORAM<B> + Instrumented>(c: &mut Criterion) 
     }
 }
 
-fn benchmark_write<const B: usize, T: ORAM<B> + Instrumented>(c: &mut Criterion) {
+fn benchmark_write<const B: usize, T: ORAM<B, StdRng> + Instrumented>(c: &mut Criterion) {
     let mut group = c.benchmark_group(T::short_name() + "write");
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram = T::new(*capacity);
+        let mut oram = T::new(*capacity, StdRng::seed_from_u64(0));
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
@@ -154,13 +210,14 @@ fn benchmark_write<const B: usize, T: ORAM<B> + Instrumented>(c: &mut Criterion)
     }
 }
 
-fn benchmark_random_operations<const B: usize, T: ORAM<B> + Instrumented>(c: &mut Criterion) {
+fn benchmark_random_operations<const B: usize, T: ORAM<B, StdRng> + Instrumented>(
+    c: &mut Criterion,
+) {
     let mut group = c.benchmark_group(T::short_name() + "random_operations");
 
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity);
+        let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
 
-        // benchmark_random_operations_helper(&mut oram, &mut group);
         let number_of_operations_to_run = 64 as usize;
 
         let block_size = oram.block_size();
@@ -186,7 +243,7 @@ fn benchmark_random_operations<const B: usize, T: ORAM<B> + Instrumented>(c: &mu
             parameters,
             |b, &parameters| {
                 b.iter(|| {
-                    run_many_random_accesses(
+                    run_many_random_accesses::<B, T>(
                         &mut oram,
                         parameters.number_of_operations_to_run,
                         black_box(&index_randomness),
@@ -200,7 +257,7 @@ fn benchmark_random_operations<const B: usize, T: ORAM<B> + Instrumented>(c: &mu
     group.finish();
 }
 
-fn run_many_random_accesses<const B: usize, T: ORAM<B>>(
+fn run_many_random_accesses<const B: usize, T: ORAM<B, StdRng>>(
     oram: &mut T,
     number_of_operations_to_run: usize,
     index_randomness: &[IndexType],
