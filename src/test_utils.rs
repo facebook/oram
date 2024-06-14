@@ -77,3 +77,16 @@ pub fn test_correctness_linear_workload<const B: usize, T: ORAM<B>>(
         assert_eq!(oram.read(index), mirror_array[index], "{index}")
     }
 }
+
+macro_rules! create_correctness_test {
+    ($function_name:ident, $oram_type: ident, $block_size:expr, $block_capacity:expr, $iterations_to_test: expr) => {
+        paste::paste! {
+            #[test]
+            fn [<$function_name _ $block_size _ $block_capacity _ $iterations_to_test>]() {
+                $function_name::<$block_capacity, $oram_type<$block_capacity>>($block_capacity, $iterations_to_test);
+            }
+        }
+    };
+}
+
+pub(crate) use create_correctness_test;
