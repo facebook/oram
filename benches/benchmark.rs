@@ -16,7 +16,7 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use oram::{BlockValue, IndexType, ORAM};
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
 
-use oram::{LinearORAM, path_oram::VecPathORAM};
+use oram::{path_oram::VecPathORAM, LinearORAM};
 
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
@@ -162,7 +162,7 @@ fn benchmark_initialization<const B: usize, T: ORAM<B, StdRng> + Instrumented>(c
                 block_size: B,
             }),
             capacity,
-            |b, capacity|  b.iter(|| T::new(*capacity, StdRng::seed_from_u64(0))),
+            |b, capacity| b.iter(|| T::new(*capacity, StdRng::seed_from_u64(0))),
         );
         // Surprisingly, when I tried to factor out the StdRng creation time as below, the benchmarks got slower,
         // so there is something I don't understand. Deferring thinking about this for now.

@@ -8,17 +8,14 @@
 //! This module contains common test utilities for crates generating tests utilizing the
 //! ORAM crate.
 
-#![allow(clippy::needless_range_loop)]
 #![cfg(test)]
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use crate::{
-    BlockValue, ORAM,
-};
+use crate::{BlockValue, ORAM};
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
-pub fn test_correctness_random_workload<const B: usize, T: ORAM<B, StdRng>>(
+pub(crate) fn test_correctness_random_workload<const B: usize, T: ORAM<B, StdRng>>(
     capacity: usize,
     num_operations: u32,
 ) {
@@ -47,7 +44,7 @@ pub fn test_correctness_random_workload<const B: usize, T: ORAM<B, StdRng>>(
 }
 
 /// Tests the correctness of an ORAM type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
-pub fn test_correctness_linear_workload<const B: usize, T: ORAM<B, StdRng>>(
+pub(crate) fn test_correctness_linear_workload<const B: usize, T: ORAM<B, StdRng>>(
     capacity: usize,
     num_passes: u32,
 ) {
@@ -76,3 +73,16 @@ pub fn test_correctness_linear_workload<const B: usize, T: ORAM<B, StdRng>>(
         assert_eq!(oram.read(index), mirror_array[index], "{index}")
     }
 }
+
+macro_rules! create_correctness_test {
+    ($function_name:ident, $oram_type: ident, $block_size:expr, $block_capacity:expr, $iterations_to_test: expr) => {
+        paste::paste! {
+            #[test]
+            fn [<$function_name _ $block_size _ $block_capacity _ $iterations_to_test>]() {
+                $function_name::<$block_capacity, $oram_type<$block_capacity>>($block_capacity, $iterations_to_test);
+            }
+        }
+    };
+}
+
+pub(crate) use create_correctness_test;

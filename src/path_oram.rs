@@ -14,7 +14,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 const MAXIMUM_TREE_HEIGHT: u32 = 63;
 
-/// The parameter `Z` from the PathORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
+/// The parameter "Z" from the Path ORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
 /// Here we adopt the more conservative setting of 4.
 pub const DEFAULT_BLOCKS_PER_BUCKET: usize = 4;
 
@@ -38,9 +38,7 @@ pub struct NonrecursiveClientStashPathORAM<const B: usize, const Z: usize, R: Rn
     rng: R,
 }
 
-impl<const B: usize, const Z: usize, R: Rng> NonrecursiveClientStashPathORAM<B, Z, R> {
-
-}
+impl<const B: usize, const Z: usize, R: Rng> NonrecursiveClientStashPathORAM<B, Z, R> {}
 
 impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
     for NonrecursiveClientStashPathORAM<B, Z, R>
@@ -300,67 +298,20 @@ pub type VecPathORAM<const B: usize> =
 
 #[cfg(test)]
 mod tests {
-    use crate::{path_oram::VecPathORAM, test_utils::{
-        test_correctness_linear_workload, test_correctness_random_workload
-    }};
+    use crate::{
+        path_oram::VecPathORAM,
+        test_utils::{test_correctness_linear_workload, test_correctness_random_workload, create_correctness_test},
+    };
 
-    #[test]
-    fn test_correctness_random_workload_1_4_10000() {
-        test_correctness_random_workload::<1, VecPathORAM<1>>(4, 10000);
-    }
+    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 64, 256, 10000);
+    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 1, 64, 10000);
+    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 64, 64, 10000);
+    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 4096, 64, 1000);
+    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 4096, 256, 1000);
 
-    #[test]
-    fn test_correctness_random_workload_1_64_10000() {
-        test_correctness_random_workload::<1, VecPathORAM<1>>(64, 10000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_4_4_10000() {
-        test_correctness_random_workload::<4, VecPathORAM<4>>(4, 10000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_64_64_10000() {
-        test_correctness_random_workload::<64, VecPathORAM<64>>(64, 10000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_64_256_10000() {
-        test_correctness_random_workload::<64, VecPathORAM<64>>(256, 10000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_4096_64_1000() {
-        test_correctness_random_workload::<4096, VecPathORAM<4096>>(64, 1000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_4096_256_1000() {
-        test_correctness_random_workload::<4096, VecPathORAM<4096>>(256, 1000);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_1_64_100() {
-        test_correctness_linear_workload::<1, VecPathORAM<1>>(64, 100);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_64_64_100() {
-        test_correctness_linear_workload::<64, VecPathORAM<64>>(64, 100);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_64_256_100() {
-        test_correctness_linear_workload::<64, VecPathORAM<64>>(256, 100);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_4096_64_10() {
-        test_correctness_linear_workload::<4096, VecPathORAM<4096>>(64, 10);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_4096_256_2() {
-        test_correctness_linear_workload::<4096, VecPathORAM<4096>>(256, 2);
-    }
+    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 64, 256, 100);
+    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 1, 64, 100);
+    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 64, 64, 100);
+    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 4096, 64, 10);
+    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 4096, 256, 2);
 }
