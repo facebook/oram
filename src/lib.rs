@@ -14,7 +14,7 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::ops::BitAnd;
+use std::{marker::PhantomData, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
 pub mod path_oram;
@@ -26,9 +26,9 @@ pub type BlockSizeType = usize;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait ORAM<const B: BlockSizeType> {
+pub trait ORAM<const B: BlockSizeType, R: Rng> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
-    fn new(block_capacity: IndexType) -> Self
+    fn new(block_capacity: IndexType, rng: R) -> Self
     where
         Self: Sized;
 
@@ -143,6 +143,7 @@ impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
 }
 
 /// A Database that counts reads and writes.
+#[derive(Debug)]
 pub struct CountAccessesDatabase<V> {
     data: SimpleDatabase<V>,
     read_count: u128,
@@ -187,16 +188,23 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
-pub struct LinearTimeORAM<DB> {
+
+pub struct LinearTimeORAM<DB, R: Rng> {
     /// The memory of the ORAM.
     // Made this public for benchmarking, which ideally, I would not need to do.
     pub physical_memory: DB,
+    // rng: R,
+    rng: PhantomData<R>,
 }
 
-impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> ORAM<B> for LinearTimeORAM<DB> {
-    fn new(block_capacity: IndexType) -> Self {
+impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> ORAM<B, R>
+    for LinearTimeORAM<DB, R>
+{
+    fn new(block_capacity: IndexType, _: R) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
+            // rng: rng,
+            rng: PhantomData,
         }
     }
 
