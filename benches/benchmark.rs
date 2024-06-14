@@ -5,7 +5,7 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! This module contains benchmarks for the ORAM crate.
+//! This module contains benchmarks for the ORAM crate
 
 extern crate criterion;
 use core::fmt;

@@ -38,10 +38,6 @@ pub struct NonrecursiveClientStashPathORAM<const B: usize, const Z: usize, R: Rn
     rng: R,
 }
 
-impl<const B: usize, const Z: usize, R: Rng> NonrecursiveClientStashPathORAM<B, Z, R> {
-
-}
-
 impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
     for NonrecursiveClientStashPathORAM<B, Z, R>
 {
@@ -149,6 +145,9 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
         permuted_addresses.shuffle(&mut rng);
 
         let mut position_map = CountAccessesDatabase::new(block_capacity);
+        // for i in 0..position_map.capacity() {
+        //     position_map.write(i, CompleteBinaryTreeIndex::random_leaf(height));
+        // }
 
         let first_leaf_index = 2u64.pow(height) as usize;
         let last_leaf_index = (2 * first_leaf_index) - 1;
@@ -170,6 +169,19 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
             }
             physical_memory.write(leaf_index, bucket_to_write);
         }
+
+        // for leaf_index in 1..block_capacity {
+        //     for block in physical_memory.read(leaf_index).blocks {
+        //         if block.address != PathORAMBlock::<B>::DUMMY_ADDRESS {
+        //             assert_eq!(block.position, position_map.read(block.address).index);
+        //             // println!(
+        //             //     "{}, {}",
+        //             //     block.position,
+        //             //     position_map.read(block.address).index
+        //             // );
+        //         }
+        //     }
+        // }
 
         Self {
             physical_memory,
@@ -300,15 +312,75 @@ mod tests {
         test_correctness_linear_workload, test_correctness_random_workload, VecPathORAM,
     };
 
+    // #[test]
+    // fn scratch() {
+    //     let mut oram = VecPathORAM::<1>::new_with_stdrng0(4);
+    //     dbg!(&oram);
+    //     dbg!(oram.read(0));
+    //     dbg!(oram.read(1));
+    //     dbg!(oram.write(0, BlockValue::from_byte_array([37u8; 1])));
+    //     dbg!(&oram);
+    // }
+
+    // #[test]
+    // fn play_around_with_path_oram() {
+    //     let mut oram = VecPathORAM::<1>::new_with_stdrng0(4);
+    //     println!("{:?}", oram.read(1));
+    // }
+
+    // #[test]
+    // fn simple_test() {
+    //     let mut oram = VecPathORAM::new_with_stdrng0(4);
+
+    //     println!("Newly initialized ORAM");
+    //     println!();
+    //     dbg!(&oram);
+
+    //     oram.write(0, BlockValue::from_byte_array([0; 1]));
+    //     oram.write(1, BlockValue::from_byte_array([1; 1]));
+    //     oram.write(2, BlockValue::from_byte_array([2; 1]));
+    //     oram.write(3, BlockValue::from_byte_array([3; 1]));
+
+    //     println!("ORAM after initial writes");
+    //     println!();
+    //     dbg!(&oram);
+
+    //     dbg!(oram.read(0));
+    //     dbg!(oram.read(1));
+    //     dbg!(oram.read(2));
+    //     dbg!(oram.read(3));
+
+    //     println!("ORAM after first round of reads");
+    //     println!();
+    //     dbg!(&oram);
+
+    //     println!("ORAM after second round of reads");
+    //     println!();
+    //     dbg!(oram.read(0));
+    //     dbg!(oram.read(1));
+    //     dbg!(oram.read(2));
+    //     dbg!(oram.read(3));
+    // }
+
     #[test]
     fn test_correctness_random_workload_1_4_10000() {
         test_correctness_random_workload::<1, VecPathORAM<1>>(4, 10000);
     }
 
+    // #[test]
+    // fn test_correctness_random_workload_2_4_10000() {
+    //     test_correctness_random_workload::<2, NonrecursiveClientStashPathORAM<2, DEFAULT_BLOCKS_PER_BUCKET>>(4, 10000);
+    // }
+
     #[test]
     fn test_correctness_random_workload_1_64_10000() {
         test_correctness_random_workload::<1, VecPathORAM<1>>(64, 10000);
     }
+
+    // #[test]
+    // fn test_correctness_random_workload_64_1_10000() {
+    //     test_correctness_random_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(1, 10000);
+    // }
 
     #[test]
     fn test_correctness_random_workload_4_4_10000() {
