@@ -9,19 +9,13 @@
 //! ORAM crate.
 
 #![allow(clippy::needless_range_loop)]
+#![cfg(test)]
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use crate::{
-    path_oram::{NonrecursiveClientStashPathORAM, DEFAULT_BLOCKS_PER_BUCKET},
-    BlockValue, CountAccessesDatabase, LinearTimeORAM, ORAM,
+    BlockValue, ORAM,
 };
-
-/// A type alias for the `LinearTimeOram` monomorphization used in testing, to improve readability.
-pub type LinearORAM<const B: usize> = LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>, StdRng>;
-/// A type alias for the `NonrecursiveClientStashPathORAM` monomorphization used in testing, to improve readability.
-pub type VecPathORAM<const B: usize> =
-    NonrecursiveClientStashPathORAM<B, DEFAULT_BLOCKS_PER_BUCKET, StdRng>;
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
 pub fn test_correctness_random_workload<const B: usize, T: ORAM<B, StdRng>>(

@@ -8,7 +8,7 @@
 //! An implementation of Path ORAM.
 
 use crate::{BlockValue, CountAccessesDatabase, Database, IndexType, ORAM};
-use rand::{seq::SliceRandom, Rng};
+use rand::{rngs::StdRng, seq::SliceRandom, Rng};
 use std::{mem::size_of_val, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
@@ -294,11 +294,15 @@ impl Default for CompleteBinaryTreeIndex {
     }
 }
 
+/// A type alias for a simple `NonrecursiveClientStashPathORAM` monomorphization.
+pub type VecPathORAM<const B: usize> =
+    NonrecursiveClientStashPathORAM<B, DEFAULT_BLOCKS_PER_BUCKET, StdRng>;
+
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::{
-        test_correctness_linear_workload, test_correctness_random_workload, VecPathORAM,
-    };
+    use crate::{path_oram::VecPathORAM, test_utils::{
+        test_correctness_linear_workload, test_correctness_random_workload
+    }};
 
     #[test]
     fn test_correctness_random_workload_1_4_10000() {

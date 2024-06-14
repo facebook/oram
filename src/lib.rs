@@ -11,8 +11,7 @@
 
 use aligned::{Aligned, A64};
 use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
+    distributions::{Distribution, Standard}, rngs::StdRng, Rng
 };
 use std::{marker::PhantomData, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
@@ -266,14 +265,17 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> ORAM<B, R>
     }
 }
 
-pub mod test_utils;
+/// A type alias for a simple `LinearTimeORAM` monomorphization.
+pub type LinearORAM<const B: usize> = LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>, StdRng>;
+
+mod test_utils;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::mem;
     use test_utils::{
-        test_correctness_linear_workload, test_correctness_random_workload, LinearORAM,
+        test_correctness_linear_workload, test_correctness_random_workload,
     };
 
     #[test]

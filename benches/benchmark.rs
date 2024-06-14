@@ -16,7 +16,7 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use oram::{BlockValue, IndexType, ORAM};
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
 
-use oram::test_utils::{LinearORAM, VecPathORAM};
+use oram::{LinearORAM, path_oram::VecPathORAM};
 
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
