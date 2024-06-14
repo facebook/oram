@@ -255,7 +255,7 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> ORAM<B> for LinearTime
     }
 }
 
-pub mod test_utils;
+mod test_utils;
 
 #[cfg(test)]
 mod tests {

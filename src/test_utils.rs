@@ -8,13 +8,14 @@
 //! This module contains common test utilities for crates generating tests utilizing the
 //! ORAM crate
 
+#![cfg(test)]
 #![allow(clippy::needless_range_loop)]
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use crate::{BlockValue, CountAccessesDatabase, LinearTimeORAM, ORAM};
 
-/// A type alias for the `LinearTimeOram` monomorphization used in testing, to improve readability.
+/// A type alias for the `LinearTimeORAM` monomorphization used in testing, to improve readability.
 pub type LinearORAM<const B: usize> = LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>>;
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
