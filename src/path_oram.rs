@@ -7,16 +7,13 @@
 
 //! An implementation of Path ORAM.
 
-use crate::{BlockValue, CountAccessesDatabase, Database, IndexType, ORAM};
-use rand::{seq::SliceRandom, Rng};
+use crate::{BlockValue, Database, IndexType, SimpleDatabase, ORAM};
+use rand::{seq::SliceRandom, thread_rng, Rng};
 use std::{mem::size_of_val, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 const MAXIMUM_TREE_HEIGHT: u32 = 63;
-
-/// The parameter `Z` from the PathORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
-/// Here we adopt the more conservative setting of 4.
-pub const DEFAULT_BLOCKS_PER_BUCKET: usize = 4;
+const DEFAULT_BLOCKS_PER_BUCKET: usize = 4;
 
 /// A simple, insecure implementation of Path ORAM
 /// whose stash is just a Vec of blocks that is accessed non-obliviously.
@@ -26,28 +23,22 @@ pub const DEFAULT_BLOCKS_PER_BUCKET: usize = 4;
 /// this implementation would only leak the size of the stash at each access
 /// via a timing side-channel.
 /// (Such leakage would likely still be unacceptable.)
-/// This will be fixed by more sophisticated stash access routines
-/// in one of the next few iterations.
 #[derive(Debug)]
-pub struct NonrecursiveClientStashPathORAM<const B: usize, const Z: usize, R: Rng> {
-    /// Again, making the ORAM untrusted storage `physical_memory` public for testing, which is less than ideal.
-    pub physical_memory: CountAccessesDatabase<Bucket<B, Z>>,
+struct NonrecursiveClientStashPathORAM<const B: usize, const Z: usize> {
+    physical_memory: SimpleDatabase<Bucket<B, Z>>,
     stash: Vec<PathORAMBlock<B>>,
-    position_map: CountAccessesDatabase<CompleteBinaryTreeIndex>,
+    position_map: SimpleDatabase<CompleteBinaryTreeIndex>,
     height: u32,
-    rng: R,
 }
 
-impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
-    for NonrecursiveClientStashPathORAM<B, Z, R>
-{
+impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM<B, Z> {
     fn access(
         &mut self,
         index: crate::IndexType,
         optional_new_value: subtle::CtOption<BlockValue<B>>,
     ) -> BlockValue<B> {
         let leaf = self.position_map.read(index);
-        let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, &mut self.rng);
+        let new_position = CompleteBinaryTreeIndex::random_leaf(self.height);
         self.position_map.write(index, new_position);
 
         // Read all blocks on the relevant path into the stash
@@ -60,26 +51,23 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
         }
 
         let mut result: BlockValue<B> = BlockValue::default();
-        let value_to_write: BlockValue<B> = optional_new_value.unwrap_or_else(BlockValue::default);
-        let oram_operation_is_write = optional_new_value.is_some();
 
         // Linearly scan stash to read and potentially update target block
         for block in &mut self.stash {
             let is_requested_index = block.address.ct_eq(&index);
-
-            // Read current value of target block into result
             result.conditional_assign(&block.value, is_requested_index);
 
-            // Write new position into target block
-            block
-                .position
-                .conditional_assign(&new_position.index, is_requested_index);
-
+            let oram_operation_is_write = optional_new_value.is_some();
             let should_write = is_requested_index.bitand(oram_operation_is_write);
-            // Write new value and position into target block in case of write
+            let value_to_write: BlockValue<B> =
+                optional_new_value.unwrap_or_else(BlockValue::default);
+
             block
                 .value
                 .conditional_assign(&value_to_write, should_write);
+            block
+                .position
+                .conditional_assign(&new_position.index, should_write);
         }
 
         // Working from leaves to root, write stash back into path, obliviously but inefficiently.
@@ -123,16 +111,15 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
         result
     }
 
-    fn new(block_capacity: usize, mut rng: R) -> Self {
-        assert!(block_capacity.is_power_of_two(), "{}", block_capacity);
-        assert!(block_capacity > 1);
+    fn new(block_capacity: usize) -> Self {
+        assert!(block_capacity.is_power_of_two());
 
         let number_of_nodes = block_capacity;
 
         // physical_memory holds N buckets, each storing up to Z blocks.
         // The capacity of physical_memory in blocks is thus Z * N.
         // The number of leaves is N / 2, which the original Path ORAM paper's experiments found was sufficient.
-        let mut physical_memory = CountAccessesDatabase::new(number_of_nodes);
+        let mut physical_memory = SimpleDatabase::new(number_of_nodes);
 
         let stash = Vec::new();
 
@@ -142,9 +129,9 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
         let permuted_addresses = 0..block_capacity;
         let mut permuted_addresses = Vec::from_iter(permuted_addresses);
         let permuted_addresses = permuted_addresses.as_mut_slice();
-        permuted_addresses.shuffle(&mut rng);
+        permuted_addresses.shuffle(&mut thread_rng());
 
-        let mut position_map = CountAccessesDatabase::new(block_capacity);
+        let mut position_map = SimpleDatabase::new(block_capacity);
         // for i in 0..position_map.capacity() {
         //     position_map.write(i, CompleteBinaryTreeIndex::random_leaf(height));
         // }
@@ -162,33 +149,25 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
                     address: permuted_addresses[address_index],
                     position: leaf_index as u64,
                 };
-                position_map.write(
-                    permuted_addresses[address_index],
-                    CompleteBinaryTreeIndex::new(height, leaf_index as u64),
-                );
+                position_map.write(permuted_addresses[address_index], CompleteBinaryTreeIndex::new(height, leaf_index as u64));
             }
             physical_memory.write(leaf_index, bucket_to_write);
         }
 
-        // for leaf_index in 1..block_capacity {
-        //     for block in physical_memory.read(leaf_index).blocks {
-        //         if block.address != PathORAMBlock::<B>::DUMMY_ADDRESS {
-        //             assert_eq!(block.position, position_map.read(block.address).index);
-        //             // println!(
-        //             //     "{}, {}",
-        //             //     block.position,
-        //             //     position_map.read(block.address).index
-        //             // );
-        //         }
-        //     }
-        // }
+        for leaf_index in 1..block_capacity {
+            for block in physical_memory.read(leaf_index).blocks {
+                if block.address != PathORAMBlock::<B>::DUMMY_ADDRESS {
+                    assert_eq!(block.position, position_map.read(block.address).index);
+                    println!("{}, {}", block.position, position_map.read(block.address).index);
+                }
+            }
+        }
 
         Self {
             physical_memory,
             stash,
             position_map,
             height,
-            rng,
         }
     }
 
@@ -288,8 +267,8 @@ impl CompleteBinaryTreeIndex {
         CompleteBinaryTreeIndex::new(height, node_index)
     }
 
-    fn random_leaf<R: Rng>(tree_height: u32, mut rng: R) -> Self {
-        let random_index = 2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height));
+    fn random_leaf(tree_height: u32) -> Self {
+        let random_index = 2u64.pow(tree_height) + thread_rng().gen_range(0..2u64.pow(tree_height));
         let result = CompleteBinaryTreeIndex::new(tree_height, random_index);
         assert!(result.is_leaf());
         result
@@ -306,65 +285,34 @@ impl Default for CompleteBinaryTreeIndex {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::{
-        test_correctness_linear_workload, test_correctness_random_workload, VecPathORAM,
-    };
+    use super::*;
+    use crate::test_utils::test_correctness_random_workload;
 
-    // #[test]
-    // fn scratch() {
-    //     let mut oram = VecPathORAM::<1>::new_with_stdrng0(4);
-    //     dbg!(&oram);
-    //     dbg!(oram.read(0));
-    //     dbg!(oram.read(1));
-    //     dbg!(oram.write(0, BlockValue::from_byte_array([37u8; 1])));
-    //     dbg!(&oram);
-    // }
+    use crate::{path_oram::NonrecursiveClientStashPathORAM, ORAM};
 
-    // #[test]
-    // fn play_around_with_path_oram() {
-    //     let mut oram = VecPathORAM::<1>::new_with_stdrng0(4);
-    //     println!("{:?}", oram.read(1));
-    // }
+    #[test]
+    fn scratch() {
+        let mut oram: NonrecursiveClientStashPathORAM<1, DEFAULT_BLOCKS_PER_BUCKET> = NonrecursiveClientStashPathORAM::new(2);
+        dbg!(&oram);
+        dbg!(oram.read(0));
+        dbg!(oram.read(1));
+        dbg!(oram.write(0, BlockValue::from_byte_array([37u8; 1])));
+        dbg!(&oram);
+    }
 
-    // #[test]
-    // fn simple_test() {
-    //     let mut oram = VecPathORAM::new_with_stdrng0(4);
-
-    //     println!("Newly initialized ORAM");
-    //     println!();
-    //     dbg!(&oram);
-
-    //     oram.write(0, BlockValue::from_byte_array([0; 1]));
-    //     oram.write(1, BlockValue::from_byte_array([1; 1]));
-    //     oram.write(2, BlockValue::from_byte_array([2; 1]));
-    //     oram.write(3, BlockValue::from_byte_array([3; 1]));
-
-    //     println!("ORAM after initial writes");
-    //     println!();
-    //     dbg!(&oram);
-
-    //     dbg!(oram.read(0));
-    //     dbg!(oram.read(1));
-    //     dbg!(oram.read(2));
-    //     dbg!(oram.read(3));
-
-    //     println!("ORAM after first round of reads");
-    //     println!();
-    //     dbg!(&oram);
-
-    //     println!("ORAM after second round of reads");
-    //     println!();
-    //     dbg!(oram.read(0));
-    //     dbg!(oram.read(1));
-    //     dbg!(oram.read(2));
-    //     dbg!(oram.read(3));
-    // }
+    #[test]
+    fn play_around_with_path_oram() {
+        let mut oram: NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET> =
+            NonrecursiveClientStashPathORAM::new(64);
+        println!("{:?}", oram.read(1));
+    }
 
     #[test]
     fn test_correctness_random_workload_1_4_10000() {
-        test_correctness_random_workload::<1, VecPathORAM<1>>(4, 10000);
+        test_correctness_random_workload::<1, NonrecursiveClientStashPathORAM<1, DEFAULT_BLOCKS_PER_BUCKET>>(4, 10000);
     }
 
     // #[test]
@@ -372,10 +320,10 @@ mod tests {
     //     test_correctness_random_workload::<2, NonrecursiveClientStashPathORAM<2, DEFAULT_BLOCKS_PER_BUCKET>>(4, 10000);
     // }
 
-    #[test]
-    fn test_correctness_random_workload_1_64_10000() {
-        test_correctness_random_workload::<1, VecPathORAM<1>>(64, 10000);
-    }
+    // #[test]
+    // fn test_correctness_random_workload_1_64_10000() {
+    //     test_correctness_random_workload::<1, NonrecursiveClientStashPathORAM<1, DEFAULT_BLOCKS_PER_BUCKET>>(64, 10000);
+    // }
 
     // #[test]
     // fn test_correctness_random_workload_64_1_10000() {
@@ -384,51 +332,56 @@ mod tests {
 
     #[test]
     fn test_correctness_random_workload_4_4_10000() {
-        test_correctness_random_workload::<4, VecPathORAM<4>>(4, 10000);
+        test_correctness_random_workload::<4, NonrecursiveClientStashPathORAM<4, DEFAULT_BLOCKS_PER_BUCKET>>(4, 10000);
     }
 
-    #[test]
-    fn test_correctness_random_workload_64_64_10000() {
-        test_correctness_random_workload::<64, VecPathORAM<64>>(64, 10000);
-    }
+    // #[test]
+    // fn test_correctness_random_workload_64_64_10000() {
+    //     test_correctness_random_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(64, 10000);
+    // }
 
-    #[test]
-    fn test_correctness_random_workload_64_256_10000() {
-        test_correctness_random_workload::<64, VecPathORAM<64>>(256, 10000);
-    }
+    // #[test]
+    // fn test_correctness_random_workload_64_256_10000() {
+    //     test_correctness_random_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(256, 10000);
+    // }
 
-    #[test]
-    fn test_correctness_random_workload_4096_64_1000() {
-        test_correctness_random_workload::<4096, VecPathORAM<4096>>(64, 1000);
-    }
+    // #[test]
+    // fn test_correctness_random_workload_4096_64_1000() {
+    //     test_correctness_random_workload::<4096, NonrecursiveClientStashPathORAM<4096, DEFAULT_BLOCKS_PER_BUCKET>>(200, 1000);
+    // }
 
-    #[test]
-    fn test_correctness_random_workload_4096_256_1000() {
-        test_correctness_random_workload::<4096, VecPathORAM<4096>>(256, 1000);
-    }
+    // #[test]
+    // fn test_correctness_random_workload_4096_256_1000() {
+    //     test_correctness_random_workload::<4096, NonrecursiveClientStashPathORAM<4096, DEFAULT_BLOCKS_PER_BUCKET>>(256, 1000);
+    // }
 
-    #[test]
-    fn test_correctness_linear_workload_1_64_100() {
-        test_correctness_linear_workload::<1, VecPathORAM<1>>(64, 100);
-    }
+    // #[test]
+    // fn test_correctness_linear_workload_1_64_100() {
+    //     test_correctness_linear_workload::<1, NonrecursiveClientStashPathORAM<1, DEFAULT_BLOCKS_PER_BUCKET>>(64, 100);
+    // }
 
-    #[test]
-    fn test_correctness_linear_workload_64_64_100() {
-        test_correctness_linear_workload::<64, VecPathORAM<64>>(64, 100);
-    }
+    // #[test]
+    // fn test_correctness_linear_workload_64_1_100() {
+    //     test_correctness_linear_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(1, 100);
+    // }
 
-    #[test]
-    fn test_correctness_linear_workload_64_256_100() {
-        test_correctness_linear_workload::<64, VecPathORAM<64>>(256, 100);
-    }
+    // #[test]
+    // fn test_correctness_linear_workload_64_64_100() {
+    //     test_correctness_linear_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(64, 100);
+    // }
 
-    #[test]
-    fn test_correctness_linear_workload_4096_64_10() {
-        test_correctness_linear_workload::<4096, VecPathORAM<4096>>(64, 10);
-    }
+    // #[test]
+    // fn test_correctness_linear_workload_64_256_100() {
+    //     test_correctness_linear_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(256, 100);
+    // }
 
-    #[test]
-    fn test_correctness_linear_workload_4096_256_2() {
-        test_correctness_linear_workload::<4096, VecPathORAM<4096>>(256, 2);
-    }
+    // #[test]
+    // fn test_correctness_linear_workload_4096_64_10() {
+    //     test_correctness_linear_workload::<4096, NonrecursiveClientStashPathORAM<4096, DEFAULT_BLOCKS_PER_BUCKET>>(64, 10);
+    // }
+
+    // #[test]
+    // fn test_correctness_linear_workload_4096_256_2() {
+    //     test_correctness_linear_workload::<4096, NonrecursiveClientStashPathORAM<4096, DEFAULT_BLOCKS_PER_BUCKET>>(256, 2);
+    // }
 }

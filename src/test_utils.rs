@@ -12,25 +12,19 @@
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use crate::{
-    path_oram::{NonrecursiveClientStashPathORAM, DEFAULT_BLOCKS_PER_BUCKET},
-    BlockValue, CountAccessesDatabase, LinearTimeORAM, ORAM,
-};
+use crate::{BlockValue, CountAccessesDatabase, LinearTimeORAM, ORAM};
 
 /// A type alias for the `LinearTimeOram` monomorphization used in testing, to improve readability.
-pub type LinearORAM<const B: usize> = LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>, StdRng>;
-/// A type alias for the `NonrecursiveClientStashPathORAM` monomorphization used in testing, to improve readability.
-pub type VecPathORAM<const B: usize> =
-    NonrecursiveClientStashPathORAM<B, DEFAULT_BLOCKS_PER_BUCKET, StdRng>;
+pub type LinearORAM<const B: usize> = LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>>;
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
-pub fn test_correctness_random_workload<const B: usize, T: ORAM<B, StdRng>>(
+pub fn test_correctness_random_workload<const B: usize, T: ORAM<B>>(
     capacity: usize,
     num_operations: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
+    let mut oram = T::new(capacity);
     let mut mirror_array = vec![BlockValue::default(); capacity];
 
     for _ in 0..num_operations {
@@ -53,13 +47,13 @@ pub fn test_correctness_random_workload<const B: usize, T: ORAM<B, StdRng>>(
 }
 
 /// Tests the correctness of an ORAM type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
-pub fn test_correctness_linear_workload<const B: usize, T: ORAM<B, StdRng>>(
+pub fn test_correctness_linear_workload<const B: usize, T: ORAM<B>>(
     capacity: usize,
     num_passes: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
+    let mut oram = T::new(capacity);
 
     let mut mirror_array = vec![BlockValue::default(); capacity];
 
