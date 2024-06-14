@@ -6,7 +6,7 @@
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
 //! This module contains common test utilities for crates generating tests utilizing the
-//! ORAM crate
+//! ORAM crate.
 
 #![allow(clippy::needless_range_loop)]
 
