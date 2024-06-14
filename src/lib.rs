@@ -261,9 +261,7 @@ mod test_utils;
 mod tests {
     use super::*;
     use std::mem;
-    use test_utils::{
-        test_correctness_linear_workload, test_correctness_random_workload, LinearORAM,
-    };
+    use test_utils::{test_correctness_linear_workload, test_correctness_random_workload, create_correctness_test};
 
     #[test]
     fn check_alignment() {
@@ -275,63 +273,97 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_correctness_random_workload_1_64_10000() {
-        test_correctness_random_workload::<1, LinearORAM<1>>(64, 10000);
-    }
+    // Block size 64 bytes, block capacity 256 bytes, testing with 10000 operations
+    create_correctness_test!(test_correctness_random_workload, LinearORAM, 64, 256, 10000);
+    create_correctness_test!(test_correctness_random_workload, LinearORAM, 1, 64, 10000);
+    create_correctness_test!(test_correctness_random_workload, LinearORAM, 64, 1, 10000);
+    create_correctness_test!(test_correctness_random_workload, LinearORAM, 64, 64, 10000);
+    create_correctness_test!(test_correctness_random_workload, LinearORAM, 4096, 64, 1000);
+    create_correctness_test!(test_correctness_random_workload, LinearORAM, 4096, 256, 1000);
 
-    #[test]
-    fn test_correctness_random_workload_64_1_10000() {
-        test_correctness_random_workload::<64, LinearORAM<64>>(1, 10000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_64_64_10000() {
-        test_correctness_random_workload::<64, LinearORAM<64>>(64, 10000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_64_256_10000() {
-        test_correctness_random_workload::<64, LinearORAM<64>>(256, 10000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_4096_64_1000() {
-        test_correctness_random_workload::<4096, LinearORAM<4096>>(200, 1000);
-    }
-
-    #[test]
-    fn test_correctness_random_workload_4096_256_1000() {
-        test_correctness_random_workload::<4096, LinearORAM<4096>>(256, 1000);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_1_64_100() {
-        test_correctness_linear_workload::<1, LinearORAM<1>>(64, 100);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_64_1_100() {
-        test_correctness_linear_workload::<64, LinearORAM<64>>(1, 100);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_64_64_100() {
-        test_correctness_linear_workload::<64, LinearORAM<64>>(64, 100);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_64_256_100() {
-        test_correctness_linear_workload::<64, LinearORAM<64>>(256, 100);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_4096_64_10() {
-        test_correctness_linear_workload::<4096, LinearORAM<4096>>(64, 10);
-    }
-
-    #[test]
-    fn test_correctness_linear_workload_4096_256_2() {
-        test_correctness_linear_workload::<4096, LinearORAM<4096>>(256, 2);
-    }
+    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 64, 256, 100);
+    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 1, 64, 100);
+    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 64, 1, 100);
+    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 64, 64, 100);
+    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 4096, 64, 10);
+    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 4096, 256, 2);
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use std::mem;
+//     use test_utils::{
+//         test_correctness_linear_workload, test_correctness_random_workload, LinearORAM,
+//     };
+
+//     #[test]
+//     fn check_alignment() {
+//         let irrelevant_capacity = 64;
+//         let expected_alignment = 64;
+//         let database = SimpleDatabase::<BlockValue<64>>::new(irrelevant_capacity);
+//         for block in &database.0 {
+//             assert_eq!(mem::align_of_val(block), expected_alignment);
+//         }
+//     }
+
+//     #[test]
+//     fn test_correctness_random_workload_1_64_10000() {
+//         test_correctness_random_workload::<1, LinearORAM<1>>(64, 10000);
+//     }
+
+//     #[test]
+//     fn test_correctness_random_workload_64_1_10000() {
+//         test_correctness_random_workload::<64, LinearORAM<64>>(1, 10000);
+//     }
+
+//     #[test]
+//     fn test_correctness_random_workload_64_64_10000() {
+//         test_correctness_random_workload::<64, LinearORAM<64>>(64, 10000);
+//     }
+
+//     #[test]
+//     fn test_correctness_random_workload_64_256_10000() {
+//         test_correctness_random_workload::<64, LinearORAM<64>>(256, 10000);
+//     }
+
+//     #[test]
+//     fn test_correctness_random_workload_4096_64_1000() {
+//         test_correctness_random_workload::<4096, LinearORAM<4096>>(200, 1000);
+//     }
+
+//     #[test]
+//     fn test_correctness_random_workload_4096_256_1000() {
+//         test_correctness_random_workload::<4096, LinearORAM<4096>>(256, 1000);
+//     }
+
+//     #[test]
+//     fn test_correctness_linear_workload_1_64_100() {
+//         test_correctness_linear_workload::<1, LinearORAM<1>>(64, 100);
+//     }
+
+//     #[test]
+//     fn test_correctness_linear_workload_64_1_100() {
+//         test_correctness_linear_workload::<64, LinearORAM<64>>(1, 100);
+//     }
+
+//     #[test]
+//     fn test_correctness_linear_workload_64_64_100() {
+//         test_correctness_linear_workload::<64, LinearORAM<64>>(64, 100);
+//     }
+
+//     #[test]
+//     fn test_correctness_linear_workload_64_256_100() {
+//         test_correctness_linear_workload::<64, LinearORAM<64>>(256, 100);
+//     }
+
+//     #[test]
+//     fn test_correctness_linear_workload_4096_64_10() {
+//         test_correctness_linear_workload::<4096, LinearORAM<4096>>(64, 10);
+//     }
+
+//     #[test]
+//     fn test_correctness_linear_workload_4096_256_2() {
+//         test_correctness_linear_workload::<4096, LinearORAM<4096>>(256, 2);
+//     }
+// }
