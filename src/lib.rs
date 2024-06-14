@@ -121,6 +121,7 @@ pub trait Database<V: Default + Copy>: Sized {
 }
 
 /// A simple Database that stores its data as a Vec.
+#[derive(Debug)]
 pub struct SimpleDatabase<V>(Vec<V>);
 
 impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {

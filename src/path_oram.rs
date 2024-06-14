@@ -6,7 +6,6 @@
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
 //! An implementation of Path ORAM.
-// TODO replace thread_rng with actual rng
 
 use crate::{BlockValue, Database, IndexType, SimpleDatabase, ORAM};
 use rand::{seq::SliceRandom, thread_rng, Rng};
@@ -16,31 +15,6 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 const MAXIMUM_TREE_HEIGHT: u32 = 63;
 const DEFAULT_BLOCKS_PER_BUCKET: usize = 4;
 
-#[derive(Clone, Copy, Default)]
-struct PathORAMBlock<const B: usize> {
-    value: BlockValue<B>,
-    address: IndexType,
-    position: u64,
-}
-
-impl<const B: usize> PathORAMBlock<B> {
-    const DUMMY_ADDRESS: IndexType = 0;
-}
-
-impl<const B: usize> ConditionallySelectable for PathORAMBlock<B> {
-    fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-        let value = BlockValue::conditional_select(&a.value, &b.value, choice);
-        let address =
-            u64::conditional_select(&(a.address as u64), &(b.address as u64), choice) as usize;
-        let position = u64::conditional_select(&a.position, &b.position, choice);
-        PathORAMBlock::<B> {
-            value,
-            address,
-            position,
-        }
-    }
-}
-
 /// A simple, insecure implementation of Path ORAM
 /// whose stash is just a Vec of blocks that is accessed non-obliviously.
 /// In our scenario where the stash is in untrusted storage,
@@ -49,6 +23,7 @@ impl<const B: usize> ConditionallySelectable for PathORAMBlock<B> {
 /// this implementation would only leak the size of the stash at each access
 /// via a timing side-channel.
 /// (Such leakage would likely still be unacceptable.)
+#[derive(Debug)]
 struct NonrecursiveClientStashPathORAM<const B: usize, const Z: usize> {
     physical_memory: SimpleDatabase<Bucket<B, Z>>,
     stash: Vec<PathORAMBlock<B>>,
@@ -67,7 +42,7 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
         self.position_map.write(index, new_position);
 
         // Read all blocks on the relevant path into the stash
-        for depth in 0..self.height {
+        for depth in 0..=self.height {
             let node = CompleteBinaryTreeIndex::node_on_path(leaf, depth);
             let bucket = self.physical_memory.read(node.index as usize);
             for block in bucket.blocks {
@@ -96,7 +71,7 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
         }
 
         // Working from leaves to root, write stash back into path, obliviously but inefficiently.
-        for depth in (0..self.height).rev() {
+        for depth in (0..=self.height).rev() {
             let bucket_address: CompleteBinaryTreeIndex =
                 CompleteBinaryTreeIndex::node_on_path(leaf, depth);
             let mut new_bucket: Bucket<B, Z> = Bucket::default();
@@ -124,7 +99,7 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
 
                         // If found, write the slot and overwrite the stash block with a dummy block.
                         slot.conditional_assign(stashed_block, should_write);
-                        stashed_block.conditional_assign(&PathORAMBlock::default(), should_write);
+                        stashed_block.conditional_assign(&PathORAMBlock::dummy(), should_write);
                         written.conditional_assign(&(1.into()), should_write);
                     }
                 }
@@ -150,16 +125,16 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
 
         let height: u32 = block_capacity.ilog2() - 1;
 
-        let mut position_map = SimpleDatabase::new(block_capacity);
-        for i in 0..position_map.capacity() {
-            position_map.write(i, CompleteBinaryTreeIndex::random_leaf(height));
-        }
-
         // We initialize the physical memory with blocks containing 0
         let permuted_addresses = 0..block_capacity;
         let mut permuted_addresses = Vec::from_iter(permuted_addresses);
         let permuted_addresses = permuted_addresses.as_mut_slice();
         permuted_addresses.shuffle(&mut thread_rng());
+
+        let mut position_map = SimpleDatabase::new(block_capacity);
+        // for i in 0..position_map.capacity() {
+        //     position_map.write(i, CompleteBinaryTreeIndex::random_leaf(height));
+        // }
 
         let first_leaf_index = 2u64.pow(height) as usize;
         let last_leaf_index = (2 * first_leaf_index) - 1;
@@ -173,9 +148,19 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
                     value: BlockValue::<B>::default(),
                     address: permuted_addresses[address_index],
                     position: leaf_index as u64,
-                }
+                };
+                position_map.write(permuted_addresses[address_index], CompleteBinaryTreeIndex::new(height, leaf_index as u64));
             }
             physical_memory.write(leaf_index, bucket_to_write);
+        }
+
+        for leaf_index in 1..block_capacity {
+            for block in physical_memory.read(leaf_index).blocks {
+                if block.address != PathORAMBlock::<B>::DUMMY_ADDRESS {
+                    assert_eq!(block.position, position_map.read(block.address).index);
+                    println!("{}, {}", block.position, position_map.read(block.address).index);
+                }
+            }
         }
 
         Self {
@@ -195,8 +180,42 @@ impl<const B: usize, const Z: usize> ORAM<B> for NonrecursiveClientStashPathORAM
     }
 }
 
+#[derive(Clone, Copy, Default, Debug)]
+struct PathORAMBlock<const B: usize> {
+    value: BlockValue<B>,
+    address: IndexType,
+    position: u64,
+}
+
+impl<const B: usize> PathORAMBlock<B> {
+    const DUMMY_ADDRESS: IndexType = IndexType::MAX;
+    const DUMMY_POSITION: u64 = u64::MAX;
+
+    fn dummy() -> Self {
+        Self {
+            value: BlockValue::default(),
+            address: Self::DUMMY_ADDRESS,
+            position: Self::DUMMY_POSITION,
+        }
+    }
+}
+
+impl<const B: usize> ConditionallySelectable for PathORAMBlock<B> {
+    fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
+        let value = BlockValue::conditional_select(&a.value, &b.value, choice);
+        let address =
+            u64::conditional_select(&(a.address as u64), &(b.address as u64), choice) as usize;
+        let position = u64::conditional_select(&a.position, &b.position, choice);
+        PathORAMBlock::<B> {
+            value,
+            address,
+            position,
+        }
+    }
+}
+
 #[repr(align(4096))]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 /// A Path ORAM bucket.
 pub struct Bucket<const B: usize, const Z: usize> {
     blocks: [PathORAMBlock<B>; Z],
@@ -205,7 +224,7 @@ pub struct Bucket<const B: usize, const Z: usize> {
 impl<const B: usize, const Z: usize> Default for Bucket<B, Z> {
     fn default() -> Self {
         Self {
-            blocks: [PathORAMBlock::<B>::default(); Z],
+            blocks: [PathORAMBlock::<B>::dummy(); Z],
         }
     }
 }
@@ -266,10 +285,23 @@ impl Default for CompleteBinaryTreeIndex {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
-    use super::DEFAULT_BLOCKS_PER_BUCKET;
+    use super::*;
+    use crate::test_utils::test_correctness_random_workload;
+
     use crate::{path_oram::NonrecursiveClientStashPathORAM, ORAM};
+
+    #[test]
+    fn scratch() {
+        let mut oram: NonrecursiveClientStashPathORAM<1, DEFAULT_BLOCKS_PER_BUCKET> = NonrecursiveClientStashPathORAM::new(2);
+        dbg!(&oram);
+        dbg!(oram.read(0));
+        dbg!(oram.read(1));
+        dbg!(oram.write(0, BlockValue::from_byte_array([37u8; 1])));
+        dbg!(&oram);
+    }
 
     #[test]
     fn play_around_with_path_oram() {
@@ -277,4 +309,79 @@ mod tests {
             NonrecursiveClientStashPathORAM::new(64);
         println!("{:?}", oram.read(1));
     }
+
+    #[test]
+    fn test_correctness_random_workload_1_4_10000() {
+        test_correctness_random_workload::<1, NonrecursiveClientStashPathORAM<1, DEFAULT_BLOCKS_PER_BUCKET>>(4, 10000);
+    }
+
+    // #[test]
+    // fn test_correctness_random_workload_2_4_10000() {
+    //     test_correctness_random_workload::<2, NonrecursiveClientStashPathORAM<2, DEFAULT_BLOCKS_PER_BUCKET>>(4, 10000);
+    // }
+
+    // #[test]
+    // fn test_correctness_random_workload_1_64_10000() {
+    //     test_correctness_random_workload::<1, NonrecursiveClientStashPathORAM<1, DEFAULT_BLOCKS_PER_BUCKET>>(64, 10000);
+    // }
+
+    // #[test]
+    // fn test_correctness_random_workload_64_1_10000() {
+    //     test_correctness_random_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(1, 10000);
+    // }
+
+    #[test]
+    fn test_correctness_random_workload_4_4_10000() {
+        test_correctness_random_workload::<4, NonrecursiveClientStashPathORAM<4, DEFAULT_BLOCKS_PER_BUCKET>>(4, 10000);
+    }
+
+    // #[test]
+    // fn test_correctness_random_workload_64_64_10000() {
+    //     test_correctness_random_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(64, 10000);
+    // }
+
+    // #[test]
+    // fn test_correctness_random_workload_64_256_10000() {
+    //     test_correctness_random_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(256, 10000);
+    // }
+
+    // #[test]
+    // fn test_correctness_random_workload_4096_64_1000() {
+    //     test_correctness_random_workload::<4096, NonrecursiveClientStashPathORAM<4096, DEFAULT_BLOCKS_PER_BUCKET>>(200, 1000);
+    // }
+
+    // #[test]
+    // fn test_correctness_random_workload_4096_256_1000() {
+    //     test_correctness_random_workload::<4096, NonrecursiveClientStashPathORAM<4096, DEFAULT_BLOCKS_PER_BUCKET>>(256, 1000);
+    // }
+
+    // #[test]
+    // fn test_correctness_linear_workload_1_64_100() {
+    //     test_correctness_linear_workload::<1, NonrecursiveClientStashPathORAM<1, DEFAULT_BLOCKS_PER_BUCKET>>(64, 100);
+    // }
+
+    // #[test]
+    // fn test_correctness_linear_workload_64_1_100() {
+    //     test_correctness_linear_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(1, 100);
+    // }
+
+    // #[test]
+    // fn test_correctness_linear_workload_64_64_100() {
+    //     test_correctness_linear_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(64, 100);
+    // }
+
+    // #[test]
+    // fn test_correctness_linear_workload_64_256_100() {
+    //     test_correctness_linear_workload::<64, NonrecursiveClientStashPathORAM<64, DEFAULT_BLOCKS_PER_BUCKET>>(256, 100);
+    // }
+
+    // #[test]
+    // fn test_correctness_linear_workload_4096_64_10() {
+    //     test_correctness_linear_workload::<4096, NonrecursiveClientStashPathORAM<4096, DEFAULT_BLOCKS_PER_BUCKET>>(64, 10);
+    // }
+
+    // #[test]
+    // fn test_correctness_linear_workload_4096_256_2() {
+    //     test_correctness_linear_workload::<4096, NonrecursiveClientStashPathORAM<4096, DEFAULT_BLOCKS_PER_BUCKET>>(256, 2);
+    // }
 }
