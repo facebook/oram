@@ -38,10 +38,6 @@ pub struct NonrecursiveClientStashPathORAM<const B: usize, const Z: usize, R: Rn
     rng: R,
 }
 
-impl<const B: usize, const Z: usize, R: Rng> NonrecursiveClientStashPathORAM<B, Z, R> {
-
-}
-
 impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
     for NonrecursiveClientStashPathORAM<B, Z, R>
 {
