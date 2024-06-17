@@ -6,16 +6,16 @@
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
 //! This module contains common test utilities for crates generating tests utilizing the
-//! ORAM crate.
+//! `oram` crate.
 
 #![cfg(test)]
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use crate::{BlockValue, ORAM};
+use crate::{BlockValue, Oram};
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
-pub(crate) fn test_correctness_random_workload<const B: usize, T: ORAM<B, StdRng>>(
+pub(crate) fn test_correctness_random_workload<const B: usize, T: Oram<B, StdRng>>(
     capacity: usize,
     num_operations: u32,
 ) {
@@ -43,8 +43,8 @@ pub(crate) fn test_correctness_random_workload<const B: usize, T: ORAM<B, StdRng
     }
 }
 
-/// Tests the correctness of an ORAM type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
-pub(crate) fn test_correctness_linear_workload<const B: usize, T: ORAM<B, StdRng>>(
+/// Tests the correctness of an `Oram` type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
+pub(crate) fn test_correctness_linear_workload<const B: usize, T: Oram<B, StdRng>>(
     capacity: usize,
     num_passes: u32,
 ) {

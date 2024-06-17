@@ -7,7 +7,7 @@
 
 //! An implementation of Path ORAM.
 
-use crate::{BlockValue, CountAccessesDatabase, Database, IndexType, ORAM};
+use crate::{BlockValue, CountAccessesDatabase, Database, IndexType, Oram};
 use rand::{rngs::StdRng, seq::SliceRandom, Rng};
 use std::{mem::size_of_val, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
@@ -29,19 +29,19 @@ pub const DEFAULT_BLOCKS_PER_BUCKET: usize = 4;
 /// This will be fixed by more sophisticated stash access routines
 /// in one of the next few iterations.
 #[derive(Debug)]
-pub struct NonrecursiveClientStashPathORAM<const B: usize, const Z: usize, R: Rng> {
+pub struct NonrecursiveClientStashPathOram<const B: usize, const Z: usize, R: Rng> {
     /// Again, making the ORAM untrusted storage `physical_memory` public for testing, which is less than ideal.
     pub physical_memory: CountAccessesDatabase<Bucket<B, Z>>,
-    stash: Vec<PathORAMBlock<B>>,
+    stash: Vec<PathOramBlock<B>>,
     position_map: CountAccessesDatabase<CompleteBinaryTreeIndex>,
     height: u32,
     rng: R,
 }
 
-impl<const B: usize, const Z: usize, R: Rng> NonrecursiveClientStashPathORAM<B, Z, R> {}
+impl<const B: usize, const Z: usize, R: Rng> NonrecursiveClientStashPathOram<B, Z, R> {}
 
-impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
-    for NonrecursiveClientStashPathORAM<B, Z, R>
+impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
+    for NonrecursiveClientStashPathOram<B, Z, R>
 {
     fn access(
         &mut self,
@@ -100,7 +100,7 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
 
                 for stash_index in (0..self.stash.len()).rev() {
                     let stashed_block = &mut self.stash[stash_index];
-                    if stashed_block.address == PathORAMBlock::<B>::DUMMY_ADDRESS {
+                    if stashed_block.address == PathOramBlock::<B>::DUMMY_ADDRESS {
                         self.stash.remove(stash_index);
                     } else {
                         let position = stashed_block.position;
@@ -113,7 +113,7 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
 
                         // If found, write the slot and overwrite the stash block with a dummy block.
                         slot.conditional_assign(stashed_block, should_write);
-                        stashed_block.conditional_assign(&PathORAMBlock::dummy(), should_write);
+                        stashed_block.conditional_assign(&PathOramBlock::dummy(), should_write);
                         written.conditional_assign(&(1.into()), should_write);
                     }
                 }
@@ -156,7 +156,7 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
             let mut bucket_to_write = Bucket::<B, Z>::default();
             for block_index in 0..addresses_per_leaf {
                 let address_index = (leaf_index - first_leaf_index) * 2 + block_index;
-                bucket_to_write.blocks[block_index] = PathORAMBlock::<B> {
+                bucket_to_write.blocks[block_index] = PathOramBlock::<B> {
                     value: BlockValue::<B>::default(),
                     address: permuted_addresses[address_index],
                     position: leaf_index as u64,
@@ -188,13 +188,13 @@ impl<const B: usize, const Z: usize, R: Rng> ORAM<B, R>
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct PathORAMBlock<const B: usize> {
+struct PathOramBlock<const B: usize> {
     value: BlockValue<B>,
     address: IndexType,
     position: u64,
 }
 
-impl<const B: usize> PathORAMBlock<B> {
+impl<const B: usize> PathOramBlock<B> {
     const DUMMY_ADDRESS: IndexType = IndexType::MAX;
     const DUMMY_POSITION: u64 = u64::MAX;
 
@@ -207,13 +207,13 @@ impl<const B: usize> PathORAMBlock<B> {
     }
 }
 
-impl<const B: usize> ConditionallySelectable for PathORAMBlock<B> {
+impl<const B: usize> ConditionallySelectable for PathOramBlock<B> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let value = BlockValue::conditional_select(&a.value, &b.value, choice);
         let address =
             u64::conditional_select(&(a.address as u64), &(b.address as u64), choice) as usize;
         let position = u64::conditional_select(&a.position, &b.position, choice);
-        PathORAMBlock::<B> {
+        PathOramBlock::<B> {
             value,
             address,
             position,
@@ -225,13 +225,13 @@ impl<const B: usize> ConditionallySelectable for PathORAMBlock<B> {
 #[derive(Clone, Copy, Debug)]
 /// A Path ORAM bucket.
 pub struct Bucket<const B: usize, const Z: usize> {
-    blocks: [PathORAMBlock<B>; Z],
+    blocks: [PathOramBlock<B>; Z],
 }
 
 impl<const B: usize, const Z: usize> Default for Bucket<B, Z> {
     fn default() -> Self {
         Self {
-            blocks: [PathORAMBlock::<B>::dummy(); Z],
+            blocks: [PathOramBlock::<B>::dummy(); Z],
         }
     }
 }
@@ -292,14 +292,14 @@ impl Default for CompleteBinaryTreeIndex {
     }
 }
 
-/// A type alias for a simple `NonrecursiveClientStashPathORAM` monomorphization.
-pub type VecPathORAM<const B: usize> =
-    NonrecursiveClientStashPathORAM<B, DEFAULT_BLOCKS_PER_BUCKET, StdRng>;
+/// A type alias for a simple `NonrecursiveClientStashPathOram` monomorphization.
+pub type VecPathOram<const B: usize> =
+    NonrecursiveClientStashPathOram<B, DEFAULT_BLOCKS_PER_BUCKET, StdRng>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        path_oram::VecPathORAM,
+        path_oram::VecPathOram,
         test_utils::{
             create_correctness_test, test_correctness_linear_workload,
             test_correctness_random_workload,
@@ -308,31 +308,31 @@ mod tests {
 
     create_correctness_test!(
         test_correctness_random_workload,
-        VecPathORAM,
+        VecPathOram,
         64,
         256,
         10000
     );
-    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 1, 64, 10000);
-    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 64, 64, 10000);
+    create_correctness_test!(test_correctness_random_workload, VecPathOram, 1, 64, 10000);
+    create_correctness_test!(test_correctness_random_workload, VecPathOram, 64, 64, 10000);
     create_correctness_test!(
         test_correctness_random_workload,
-        VecPathORAM,
+        VecPathOram,
         4096,
         64,
         1000
     );
     create_correctness_test!(
         test_correctness_random_workload,
-        VecPathORAM,
+        VecPathOram,
         4096,
         256,
         1000
     );
 
-    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 64, 256, 100);
-    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 1, 64, 100);
-    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 64, 64, 100);
-    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 4096, 64, 10);
-    create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 4096, 256, 2);
+    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 64, 256, 100);
+    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 1, 64, 100);
+    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 64, 64, 100);
+    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 4096, 64, 10);
+    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 4096, 256, 2);
 }

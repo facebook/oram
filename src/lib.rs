@@ -27,16 +27,16 @@ pub type BlockSizeType = usize;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait ORAM<const B: BlockSizeType, R: Rng> {
-    /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
+pub trait Oram<const B: BlockSizeType, R: Rng> {
+    /// Returns a new `Oram` mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
     fn new(block_capacity: IndexType, rng: R) -> Self
     where
         Self: Sized;
 
-    /// Returns the capacity in blocks of this ORAM.
+    /// Returns the capacity in blocks of this `Oram`.
     fn block_capacity(&self) -> IndexType;
 
-    /// Returns the size in bytes of each block of this ORAM.
+    /// Returns the size in bytes of each block of this `Oram`.
     fn block_size(&self) -> BlockSizeType;
 
     /// Performs a (oblivious) ORAM access.
@@ -190,7 +190,7 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
 
-pub struct LinearTimeORAM<DB, R: Rng> {
+pub struct LinearTimeOram<DB, R: Rng> {
     /// The memory of the ORAM.
     // Made this public for benchmarking, which ideally, I would not need to do.
     pub physical_memory: DB,
@@ -198,8 +198,8 @@ pub struct LinearTimeORAM<DB, R: Rng> {
     rng: PhantomData<R>,
 }
 
-impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> ORAM<B, R>
-    for LinearTimeORAM<DB, R>
+impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
+    for LinearTimeOram<DB, R>
 {
     fn new(block_capacity: IndexType, _: R) -> Self {
         Self {
@@ -267,8 +267,8 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> ORAM<B, R>
     }
 }
 
-/// A type alias for a simple `LinearTimeORAM` monomorphization.
-pub type LinearORAM<const B: usize> = LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>, StdRng>;
+/// A type alias for a simple `LinearTimeOram` monomorphization.
+pub type LinearOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>, StdRng>;
 
 mod test_utils;
 
@@ -291,23 +291,23 @@ mod tests {
     }
 
     // Block size 64 bytes, block capacity 256 bytes, testing with 10000 operations
-    create_correctness_test!(test_correctness_random_workload, LinearORAM, 64, 256, 10000);
-    create_correctness_test!(test_correctness_random_workload, LinearORAM, 1, 64, 10000);
-    create_correctness_test!(test_correctness_random_workload, LinearORAM, 64, 1, 10000);
-    create_correctness_test!(test_correctness_random_workload, LinearORAM, 64, 64, 10000);
-    create_correctness_test!(test_correctness_random_workload, LinearORAM, 4096, 64, 1000);
+    create_correctness_test!(test_correctness_random_workload, LinearOram, 64, 256, 10000);
+    create_correctness_test!(test_correctness_random_workload, LinearOram, 1, 64, 10000);
+    create_correctness_test!(test_correctness_random_workload, LinearOram, 64, 1, 10000);
+    create_correctness_test!(test_correctness_random_workload, LinearOram, 64, 64, 10000);
+    create_correctness_test!(test_correctness_random_workload, LinearOram, 4096, 64, 1000);
     create_correctness_test!(
         test_correctness_random_workload,
-        LinearORAM,
+        LinearOram,
         4096,
         256,
         1000
     );
 
-    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 64, 256, 100);
-    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 1, 64, 100);
-    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 64, 1, 100);
-    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 64, 64, 100);
-    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 4096, 64, 10);
-    create_correctness_test!(test_correctness_linear_workload, LinearORAM, 4096, 256, 2);
+    create_correctness_test!(test_correctness_linear_workload, LinearOram, 64, 256, 100);
+    create_correctness_test!(test_correctness_linear_workload, LinearOram, 1, 64, 100);
+    create_correctness_test!(test_correctness_linear_workload, LinearOram, 64, 1, 100);
+    create_correctness_test!(test_correctness_linear_workload, LinearOram, 64, 64, 100);
+    create_correctness_test!(test_correctness_linear_workload, LinearOram, 4096, 64, 10);
+    create_correctness_test!(test_correctness_linear_workload, LinearOram, 4096, 256, 2);
 }
