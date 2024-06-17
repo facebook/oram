@@ -12,10 +12,9 @@
 use aligned::{Aligned, A64};
 use rand::{
     distributions::{Distribution, Standard},
-    rngs::StdRng,
-    Rng,
+    CryptoRng, Rng, RngCore,
 };
-use std::{marker::PhantomData, ops::BitAnd};
+use std::ops::BitAnd;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
 /// The numeric type used to specify the size of an ORAM in blocks, and to index into the ORAM.
@@ -25,12 +24,9 @@ pub type BlockSizeType = usize;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait Oram<const B: BlockSizeType, R: Rng> {
+pub trait Oram<const B: BlockSizeType> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
-    fn new(block_capacity: IndexType, rng: R) -> Self
-    where
-        Self: Sized;
-
+    fn new<R: RngCore + CryptoRng>(block_capacity: IndexType, rng: &mut R) -> Self;
     /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> IndexType;
 
@@ -40,22 +36,28 @@ pub trait Oram<const B: BlockSizeType, R: Rng> {
     /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
     /// Returns the value previously stored at `index`.
-    fn access(
+    fn access<R: RngCore + CryptoRng>(
         &mut self,
         index: IndexType,
         optional_new_value: CtOption<BlockValue<B>>,
+        rng: &mut R,
     ) -> BlockValue<B>;
 
     /// Obliviously reads the value stored at `index`.
-    fn read(&mut self, index: IndexType) -> BlockValue<B> {
+    fn read<R: RngCore + CryptoRng>(&mut self, index: IndexType, rng: &mut R) -> BlockValue<B> {
         let ct_none = CtOption::new(BlockValue::default(), 0.into());
-        self.access(index, ct_none)
+        self.access(index, ct_none, rng)
     }
 
     /// Obliviously writes the value stored at `index`.
-    fn write(&mut self, index: IndexType, new_value: BlockValue<B>) {
+    fn write<R: RngCore + CryptoRng>(
+        &mut self,
+        index: IndexType,
+        new_value: BlockValue<B>,
+        rng: &mut R,
+    ) {
         let ct_some_new_value = CtOption::new(new_value, 1.into());
-        self.access(index, ct_some_new_value);
+        self.access(index, ct_some_new_value, rng);
     }
 }
 
@@ -185,20 +187,16 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
-pub struct LinearTimeOram<DB, R: Rng> {
+pub struct LinearTimeOram<DB> {
     /// The memory of the ORAM.
     // Made this public for benchmarking, which ideally, I would not need to do.
     pub physical_memory: DB,
-    rng: PhantomData<R>,
 }
 
-impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
-    for LinearTimeOram<DB, R>
-{
-    fn new(block_capacity: IndexType, _: R) -> Self {
+impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram<DB> {
+    fn new<R: RngCore + CryptoRng>(block_capacity: IndexType, _: &mut R) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
-            rng: PhantomData,
         }
     }
 
@@ -206,10 +204,11 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
         B
     }
 
-    fn access(
+    fn access<R: RngCore + CryptoRng>(
         &mut self,
         index: IndexType,
         optional_new_value: CtOption<BlockValue<B>>,
+        _: &mut R,
     ) -> BlockValue<B> {
         // Note: index and optional_new_value should be considered secret for the purposes of constant-time operations.
 
@@ -261,7 +260,7 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
 }
 
 /// A type alias for a simple `LinearTimeOram` monomorphization.
-pub type LinearOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>, StdRng>;
+pub type LinearOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
 
 #[cfg(test)]
 mod tests {
@@ -282,7 +281,7 @@ mod tests {
     fn test_correctness_random_workload<const B: usize>(capacity: usize, num_operations: u32) {
         let mut rng = StdRng::seed_from_u64(0);
 
-        let mut oram: LinearOram<B> = LinearOram::new(capacity, StdRng::seed_from_u64(0));
+        let mut oram: LinearOram<B> = LinearOram::new(capacity, &mut rng);
         let mut mirror_array = vec![BlockValue::default(); capacity];
 
         for _ in 0..num_operations {
@@ -292,15 +291,18 @@ mod tests {
             let read_versus_write: bool = rng.gen();
 
             if read_versus_write {
-                assert_eq!(oram.read(random_index), mirror_array[random_index]);
+                assert_eq!(
+                    oram.read(random_index, &mut rng),
+                    mirror_array[random_index]
+                );
             } else {
-                oram.write(random_index, random_block_value);
+                oram.write(random_index, random_block_value, &mut rng);
                 mirror_array[random_index] = random_block_value;
             }
         }
 
         for index in 0..capacity {
-            assert_eq!(oram.read(index), mirror_array[index], "{index}")
+            assert_eq!(oram.read(index, &mut rng), mirror_array[index], "{index}")
         }
     }
 
@@ -337,7 +339,7 @@ mod tests {
     fn test_correctness_linear_workload<const B: usize>(capacity: usize, num_passes: u32) {
         let mut rng = StdRng::seed_from_u64(0);
 
-        let mut oram: LinearOram<B> = LinearOram::new(capacity, StdRng::seed_from_u64(0));
+        let mut oram: LinearOram<B> = LinearOram::new(capacity, &mut rng);
 
         let mut mirror_array = vec![BlockValue::default(); capacity];
 
@@ -348,16 +350,16 @@ mod tests {
                 let read_versus_write: bool = rng.gen();
 
                 if read_versus_write {
-                    assert_eq!(oram.read(index), mirror_array[index]);
+                    assert_eq!(oram.read(index, &mut rng), mirror_array[index]);
                 } else {
-                    oram.write(index, random_block_value);
+                    oram.write(index, random_block_value, &mut rng);
                     mirror_array[index] = random_block_value;
                 }
             }
         }
 
         for index in 0..capacity {
-            assert_eq!(oram.read(index), mirror_array[index], "{index}")
+            assert_eq!(oram.read(index, &mut rng), mirror_array[index], "{index}")
         }
     }
 
