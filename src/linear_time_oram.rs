@@ -11,7 +11,7 @@ use rand::{CryptoRng, RngCore};
 use std::ops::BitAnd;
 use subtle::{ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
-use crate::{BlockSizeType, BlockValue, CountAccessesDatabase, Database, IndexType, Oram};
+use crate::{Address, BlockSize, BlockValue, CountAccessesDatabase, Database, Oram};
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
@@ -21,22 +21,20 @@ pub struct LinearTimeOram<DB> {
     pub physical_memory: DB,
 }
 
-impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> Oram<B>
-    for LinearTimeOram<DB>
-{
-    fn new<R: RngCore + CryptoRng>(block_capacity: IndexType, _: &mut R) -> Self {
+impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram<DB> {
+    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
         }
     }
 
-    fn block_size(&self) -> BlockSizeType {
+    fn block_size(&self) -> BlockSize {
         B
     }
 
     fn access<R: RngCore + CryptoRng>(
         &mut self,
-        index: IndexType,
+        index: Address,
         optional_new_value: CtOption<BlockValue<B>>,
         _: &mut R,
     ) -> BlockValue<B> {
@@ -59,7 +57,7 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> Oram<B>
 
             // Client-side processing
             // let is_requested_index: Choice = (u8::from(index == i)).into();
-            let is_requested_index = (i as IndexType).ct_eq(&index);
+            let is_requested_index = (i as Address).ct_eq(&index);
 
             // Based on whether the loop counter matches the requested index,
             // conditionally read the value in memory into the result of the access.
@@ -84,7 +82,7 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> Oram<B>
         result
     }
 
-    fn block_capacity(&self) -> IndexType {
+    fn block_capacity(&self) -> Address {
         self.physical_memory.capacity()
     }
 }

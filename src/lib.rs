@@ -21,10 +21,9 @@ pub mod simple_insecure_path_oram;
 mod test_utils;
 
 /// The numeric type used to specify the size of an ORAM in blocks, and to index into the ORAM.
-pub type IndexType = usize;
+pub type Address = usize;
 /// The numeric type used to specify the size of each block of the ORAM in bytes.
-pub type BlockSizeType = usize;
-
+pub type BlockSize = usize;
 
 type TreeIndex = u64;
 
@@ -39,27 +38,27 @@ pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSizeType = 4;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait Oram<const B: BlockSizeType> {
+pub trait Oram<const B: BlockSize> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
-    fn new<R: RngCore + CryptoRng>(block_capacity: IndexType, rng: &mut R) -> Self;
+    fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R) -> Self;
     /// Returns the capacity in blocks of this ORAM.
-    fn block_capacity(&self) -> IndexType;
+    fn block_capacity(&self) -> Address;
 
     /// Returns the size in bytes of each block of this `Oram`.
-    fn block_size(&self) -> BlockSizeType;
+    fn block_size(&self) -> BlockSize;
 
     /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
     /// Returns the value previously stored at `index`.
     fn access<R: RngCore + CryptoRng>(
         &mut self,
-        index: IndexType,
+        index: Address,
         optional_new_value: CtOption<BlockValue<B>>,
         rng: &mut R,
     ) -> BlockValue<B>;
 
     /// Obliviously reads the value stored at `index`.
-    fn read<R: RngCore + CryptoRng>(&mut self, index: IndexType, rng: &mut R) -> BlockValue<B> {
+    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, rng: &mut R) -> BlockValue<B> {
         let ct_none = CtOption::new(BlockValue::default(), 0.into());
         self.access(index, ct_none, rng)
     }
@@ -67,7 +66,7 @@ pub trait Oram<const B: BlockSizeType> {
     /// Obliviously writes the value stored at `index`.
     fn write<R: RngCore + CryptoRng>(
         &mut self,
-        index: IndexType,
+        index: Address,
         new_value: BlockValue<B>,
         rng: &mut R,
     ) {
@@ -78,11 +77,11 @@ pub trait Oram<const B: BlockSizeType> {
 
 /// The smallest unit of memory readable/writable by the ORAM.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BlockValue<const B: BlockSizeType>(Aligned<A64, [u8; B]>);
+pub struct BlockValue<const B: BlockSize>(Aligned<A64, [u8; B]>);
 
-impl<const B: BlockSizeType> BlockValue<B> {
+impl<const B: BlockSize> BlockValue<B> {
     /// Returns the length in bytes of this `BlockValue`.
-    pub fn byte_length(&self) -> BlockSizeType {
+    pub fn byte_length(&self) -> BlockSize {
         B
     }
 
@@ -92,19 +91,19 @@ impl<const B: BlockSizeType> BlockValue<B> {
     }
 }
 
-impl<const B: BlockSizeType> From<BlockValue<B>> for [u8; B] {
+impl<const B: BlockSize> From<BlockValue<B>> for [u8; B] {
     fn from(value: BlockValue<B>) -> Self {
         *value.0
     }
 }
 
-impl<const B: BlockSizeType> Default for BlockValue<B> {
+impl<const B: BlockSize> Default for BlockValue<B> {
     fn default() -> Self {
         BlockValue::<B>(Aligned([0u8; B]))
     }
 }
 
-impl<const B: BlockSizeType> ConditionallySelectable for BlockValue<B> {
+impl<const B: BlockSize> ConditionallySelectable for BlockValue<B> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let mut result = BlockValue::default();
         for i in 0..a.byte_length() {
@@ -114,7 +113,7 @@ impl<const B: BlockSizeType> ConditionallySelectable for BlockValue<B> {
     }
 }
 
-impl<const B: BlockSizeType> Distribution<BlockValue<B>> for Standard {
+impl<const B: BlockSize> Distribution<BlockValue<B>> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue<B> {
         let mut result = BlockValue::default();
         for i in 0..result.byte_length() {
@@ -127,13 +126,13 @@ impl<const B: BlockSizeType> Distribution<BlockValue<B>> for Standard {
 /// A simple Memory trait to model the memory controller the TEE is interacting with.
 pub trait Database<V: Default + Copy>: Sized {
     /// Returns a new `Database` filled with default values.
-    fn new(number_of_addresses: IndexType) -> Self;
+    fn new(number_of_addresses: Address) -> Self;
     /// Returns the number of values stored by `self`.
-    fn capacity(&self) -> IndexType;
+    fn capacity(&self) -> Address;
     /// Reads the value stored at `index`.
-    fn read(&mut self, index: IndexType) -> V;
+    fn read(&mut self, index: Address) -> V;
     /// Writes the value stored at `index`.
-    fn write(&mut self, index: IndexType, value: V);
+    fn write(&mut self, index: Address, value: V);
 }
 
 /// A simple Database that stores its data as a Vec.
@@ -141,19 +140,19 @@ pub trait Database<V: Default + Copy>: Sized {
 pub struct SimpleDatabase<V>(Vec<V>);
 
 impl<V: Default + Copy> Database<V> for SimpleDatabase<V> {
-    fn new(number_of_addresses: IndexType) -> Self {
+    fn new(number_of_addresses: Address) -> Self {
         Self(vec![V::default(); number_of_addresses])
     }
 
-    fn capacity(&self) -> IndexType {
+    fn capacity(&self) -> Address {
         self.0.len()
     }
 
-    fn read(&mut self, index: IndexType) -> V {
+    fn read(&mut self, index: Address) -> V {
         self.0[index]
     }
 
-    fn write(&mut self, index: IndexType, value: V) {
+    fn write(&mut self, index: Address, value: V) {
         self.0[index] = value;
     }
 }
@@ -179,7 +178,7 @@ impl<V> CountAccessesDatabase<V> {
 }
 
 impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
-    fn new(number_of_addresses: IndexType) -> Self {
+    fn new(number_of_addresses: Address) -> Self {
         Self {
             data: SimpleDatabase::new(number_of_addresses),
             read_count: 0,
@@ -187,17 +186,17 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
         }
     }
 
-    fn read(&mut self, index: IndexType) -> V {
+    fn read(&mut self, index: Address) -> V {
         self.read_count += 1;
         self.data.read(index)
     }
 
-    fn write(&mut self, index: IndexType, value: V) {
+    fn write(&mut self, index: Address, value: V) {
         self.write_count += 1;
         self.data.write(index, value);
     }
 
-    fn capacity(&self) -> IndexType {
+    fn capacity(&self) -> Address {
         self.data.capacity()
     }
 }

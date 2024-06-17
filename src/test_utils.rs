@@ -31,7 +31,10 @@ pub(crate) fn test_correctness_random_workload<const B: usize, T: Oram<B>>(
         let read_versus_write: bool = rng.gen();
 
         if read_versus_write {
-            assert_eq!(oram.read(random_index, &mut rng), mirror_array[random_index]);
+            assert_eq!(
+                oram.read(random_index, &mut rng),
+                mirror_array[random_index]
+            );
         } else {
             oram.write(random_index, random_block_value, &mut rng);
             mirror_array[random_index] = random_block_value;
