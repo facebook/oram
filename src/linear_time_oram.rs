@@ -7,30 +7,26 @@
 
 //! A simple linear-time implementation of Oblivious RAM.
 
-use rand::{rngs::StdRng, Rng};
-use std::{marker::PhantomData, ops::BitAnd};
+use rand::{CryptoRng, RngCore};
+use std::ops::BitAnd;
 use subtle::{ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
 use crate::{BlockSizeType, BlockValue, CountAccessesDatabase, Database, IndexType, Oram};
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
-pub struct LinearTimeOram<DB, R: Rng> {
+pub struct LinearTimeOram<DB> {
     /// The memory of the ORAM.
     // Made this public for benchmarking, which ideally, I would not need to do.
     pub physical_memory: DB,
-    // rng: R,
-    rng: PhantomData<R>,
 }
 
-impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
-    for LinearTimeOram<DB, R>
+impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> Oram<B>
+    for LinearTimeOram<DB>
 {
-    fn new(block_capacity: IndexType, _: R) -> Self {
+    fn new<R: RngCore + CryptoRng>(block_capacity: IndexType, _: &mut R) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
-            // rng: rng,
-            rng: PhantomData,
         }
     }
 
@@ -38,10 +34,11 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
         B
     }
 
-    fn access(
+    fn access<R: RngCore + CryptoRng>(
         &mut self,
         index: IndexType,
         optional_new_value: CtOption<BlockValue<B>>,
+        _: &mut R,
     ) -> BlockValue<B> {
         // Note: index and optional_new_value should be considered secret for the purposes of constant-time operations.
 
@@ -94,7 +91,7 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
 
 /// A type alias for a simple `LinearTimeOram` monomorphization.
 pub type ConcreteLinearTimeOram<const B: usize> =
-    LinearTimeOram<CountAccessesDatabase<BlockValue<B>>, StdRng>;
+    LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
 
 #[cfg(test)]
 mod tests {

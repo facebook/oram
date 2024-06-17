@@ -10,7 +10,7 @@
 use crate::{
     BlockSizeType, BlockValue, BucketSizeType, CountAccessesDatabase, Database, IndexType, Oram, TreeHeight, TreeIndex, DEFAULT_BLOCKS_PER_BUCKET, MAXIMUM_TREE_HEIGHT
 };
-use rand::{rngs::StdRng, seq::SliceRandom, Rng};
+use rand::{seq::SliceRandom, CryptoRng, Rng};
 use std::{mem::size_of, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
@@ -26,23 +26,23 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 /// The leakage will be addressed by more sophisticated stash access routines
 /// in one of the next few iterations.
 #[derive(Debug)]
-pub struct SimpleInsecurePathOram<const B: BlockSizeType, const Z: BucketSizeType, R: Rng> {
+pub struct SimpleInsecurePathOram<const B: BlockSizeType, const Z: BucketSizeType> {
     /// Again, making the ORAM untrusted storage `physical_memory` public for now, for benchmarking purposes.
     pub physical_memory: CountAccessesDatabase<Bucket<B, Z>>,
     stash: Vec<PathOramBlock<B>>,
     position_map: CountAccessesDatabase<TreeIndex>,
     height: TreeHeight,
-    rng: R,
 }
 
-impl<const B: BlockSizeType, const Z: BucketSizeType, R: Rng> Oram<B, R> for SimpleInsecurePathOram<B, Z, R> {
-    fn access(
+impl<const B: BlockSizeType, const Z: BucketSizeType> Oram<B> for SimpleInsecurePathOram<B, Z> {
+    fn access<R: Rng + CryptoRng>(
         &mut self,
         index: crate::IndexType,
         optional_new_value: subtle::CtOption<BlockValue<B>>,
+        rng: &mut R,
     ) -> BlockValue<B> {
         let leaf = self.position_map.read(index);
-        let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, &mut self.rng);
+        let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, rng);
         self.position_map.write(index, new_position);
 
         // Read all blocks on the relevant path into the stash
@@ -119,7 +119,7 @@ impl<const B: BlockSizeType, const Z: BucketSizeType, R: Rng> Oram<B, R> for Sim
         result
     }
 
-    fn new(block_capacity: usize, mut rng: R) -> Self {
+    fn new<R: Rng + CryptoRng>(block_capacity: usize, rng: &mut R) -> Self {
         assert!(block_capacity.is_power_of_two(), "{}", block_capacity);
         assert!(block_capacity > 1);
 
@@ -139,7 +139,7 @@ impl<const B: BlockSizeType, const Z: BucketSizeType, R: Rng> Oram<B, R> for Sim
         let permuted_addresses = 0..block_capacity;
         let mut permuted_addresses = Vec::from_iter(permuted_addresses);
         let permuted_addresses = permuted_addresses.as_mut_slice();
-        permuted_addresses.shuffle(&mut rng);
+        permuted_addresses.shuffle(rng);
 
         let mut position_map = CountAccessesDatabase::new(block_capacity);
 
@@ -168,7 +168,6 @@ impl<const B: BlockSizeType, const Z: BucketSizeType, R: Rng> Oram<B, R> for Sim
             stash,
             position_map,
             height,
-            rng,
         }
     }
 
@@ -262,7 +261,7 @@ impl CompleteBinaryTreeIndex for TreeIndex {
 
 /// A type alias for a simple `SimpleInsecurePathOram` monomorphization.
 pub type ConcreteSimpleInsecurePathOram<const B: BlockSizeType> =
-    SimpleInsecurePathOram<B, DEFAULT_BLOCKS_PER_BUCKET, StdRng>;
+    SimpleInsecurePathOram<B, DEFAULT_BLOCKS_PER_BUCKET>;
 
 #[cfg(test)]
 mod tests {

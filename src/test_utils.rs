@@ -15,13 +15,13 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use crate::{BlockValue, Oram};
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
-pub(crate) fn test_correctness_random_workload<const B: usize, T: Oram<B, StdRng>>(
+pub(crate) fn test_correctness_random_workload<const B: usize, T: Oram<B>>(
     capacity: usize,
     num_operations: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
+    let mut oram = T::new(capacity, &mut rng);
     let mut mirror_array = vec![BlockValue::default(); capacity];
 
     for _ in 0..num_operations {
@@ -31,26 +31,26 @@ pub(crate) fn test_correctness_random_workload<const B: usize, T: Oram<B, StdRng
         let read_versus_write: bool = rng.gen();
 
         if read_versus_write {
-            assert_eq!(oram.read(random_index), mirror_array[random_index]);
+            assert_eq!(oram.read(random_index, &mut rng), mirror_array[random_index]);
         } else {
-            oram.write(random_index, random_block_value);
+            oram.write(random_index, random_block_value, &mut rng);
             mirror_array[random_index] = random_block_value;
         }
     }
 
     for index in 0..capacity {
-        assert_eq!(oram.read(index), mirror_array[index], "{index}")
+        assert_eq!(oram.read(index, &mut rng), mirror_array[index], "{index}")
     }
 }
 
 /// Tests the correctness of an `Oram` type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
-pub(crate) fn test_correctness_linear_workload<const B: usize, T: Oram<B, StdRng>>(
+pub(crate) fn test_correctness_linear_workload<const B: usize, T: Oram<B>>(
     capacity: usize,
     num_passes: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
+    let mut oram = T::new(capacity, &mut rng);
 
     let mut mirror_array = vec![BlockValue::default(); capacity];
 
@@ -61,16 +61,16 @@ pub(crate) fn test_correctness_linear_workload<const B: usize, T: Oram<B, StdRng
             let read_versus_write: bool = rng.gen();
 
             if read_versus_write {
-                assert_eq!(oram.read(index), mirror_array[index]);
+                assert_eq!(oram.read(index, &mut rng), mirror_array[index]);
             } else {
-                oram.write(index, random_block_value);
+                oram.write(index, random_block_value, &mut rng);
                 mirror_array[index] = random_block_value;
             }
         }
     }
 
     for index in 0..capacity {
-        assert_eq!(oram.read(index), mirror_array[index], "{index}")
+        assert_eq!(oram.read(index, &mut rng), mirror_array[index], "{index}")
     }
 }
 
