@@ -5,44 +5,37 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! An implementation of Path ORAM.
+//! A simple, insecure implementation of Path ORAM with "client-side" stash and (non-recursive) position map.
 
-use crate::{BlockValue, CountAccessesDatabase, Database, IndexType, Oram};
+use crate::{
+    BlockSizeType, BlockValue, BucketSizeType, CountAccessesDatabase, Database, IndexType, Oram, TreeHeight, TreeIndex, DEFAULT_BLOCKS_PER_BUCKET, MAXIMUM_TREE_HEIGHT
+};
 use rand::{rngs::StdRng, seq::SliceRandom, Rng};
-use std::{mem::size_of_val, ops::BitAnd};
+use std::{mem::size_of, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
-const MAXIMUM_TREE_HEIGHT: u32 = 63;
-
-/// The parameter "Z" from the Path ORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
-/// Here we adopt the more conservative setting of 4.
-pub const DEFAULT_BLOCKS_PER_BUCKET: usize = 4;
-
+/// (!) This is a development stepping stone, not a finished implementation. (!)
 /// A simple, insecure implementation of Path ORAM
-/// whose stash is just a Vec of blocks that is accessed non-obliviously.
+/// whose stash is just a `Vec` of blocks that is accessed non-obliviously.
 /// In our scenario where the stash is in untrusted storage,
 /// this is of course completely unacceptable.
 /// In the scenario where the stash is in trusted client storage,
 /// this implementation would only leak the size of the stash at each access
 /// via a timing side-channel.
 /// (Such leakage would likely still be unacceptable.)
-/// This will be fixed by more sophisticated stash access routines
+/// The leakage will be addressed by more sophisticated stash access routines
 /// in one of the next few iterations.
 #[derive(Debug)]
-pub struct NonrecursiveClientStashPathOram<const B: usize, const Z: usize, R: Rng> {
-    /// Again, making the ORAM untrusted storage `physical_memory` public for testing, which is less than ideal.
+pub struct SimpleInsecurePathOram<const B: BlockSizeType, const Z: BucketSizeType, R: Rng> {
+    /// Again, making the ORAM untrusted storage `physical_memory` public for now, for benchmarking purposes.
     pub physical_memory: CountAccessesDatabase<Bucket<B, Z>>,
     stash: Vec<PathOramBlock<B>>,
-    position_map: CountAccessesDatabase<CompleteBinaryTreeIndex>,
-    height: u32,
+    position_map: CountAccessesDatabase<TreeIndex>,
+    height: TreeHeight,
     rng: R,
 }
 
-impl<const B: usize, const Z: usize, R: Rng> NonrecursiveClientStashPathOram<B, Z, R> {}
-
-impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
-    for NonrecursiveClientStashPathOram<B, Z, R>
-{
+impl<const B: BlockSizeType, const Z: BucketSizeType, R: Rng> Oram<B, R> for SimpleInsecurePathOram<B, Z, R> {
     fn access(
         &mut self,
         index: crate::IndexType,
@@ -54,8 +47,9 @@ impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
 
         // Read all blocks on the relevant path into the stash
         for depth in 0..=self.height {
-            let node = CompleteBinaryTreeIndex::node_on_path(leaf, depth);
-            let bucket = self.physical_memory.read(node.index as usize);
+            // let node = CompleteBinaryTreeIndex::node_on_path(leaf, depth);
+            let node = leaf.node_on_path(depth, self.height);
+            let bucket = self.physical_memory.read(node as usize);
             for block in bucket.blocks {
                 self.stash.push(block);
             }
@@ -75,7 +69,7 @@ impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
             // Write new position into target block
             block
                 .position
-                .conditional_assign(&new_position.index, is_requested_index);
+                .conditional_assign(&new_position, is_requested_index);
 
             let should_write = is_requested_index.bitand(oram_operation_is_write);
             // Write new value and position into target block in case of write
@@ -86,8 +80,9 @@ impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
 
         // Working from leaves to root, write stash back into path, obliviously but inefficiently.
         for depth in (0..=self.height).rev() {
-            let bucket_address: CompleteBinaryTreeIndex =
-                CompleteBinaryTreeIndex::node_on_path(leaf, depth);
+            // let bucket_address: CompleteBinaryTreeIndex =
+            //     CompleteBinaryTreeIndex::node_on_path(leaf, depth);
+            let bucket_address = leaf.node_on_path(depth, self.height);
             let mut new_bucket: Bucket<B, Z> = Bucket::default();
 
             for slot_index in 0..DEFAULT_BLOCKS_PER_BUCKET {
@@ -104,11 +99,10 @@ impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
                         self.stash.remove(stash_index);
                     } else {
                         let position = stashed_block.position;
-                        let position_index = CompleteBinaryTreeIndex::new(self.height, position);
-                        let assigned_bucket_address =
-                            CompleteBinaryTreeIndex::node_on_path(position_index, depth);
+                        // let position_index = CompleteBinaryTreeIndex::new(self.height, position);
+                        let assigned_bucket_address = position.node_on_path(depth, self.height);
                         let position_matches =
-                            bucket_address.index.ct_eq(&assigned_bucket_address.index);
+                            bucket_address.ct_eq(&assigned_bucket_address);
                         let should_write = position_matches.bitand(!written);
 
                         // If found, write the slot and overwrite the stash block with a dummy block.
@@ -119,7 +113,7 @@ impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
                 }
             }
             self.physical_memory
-                .write(bucket_address.index as usize, new_bucket);
+                .write(bucket_address as usize, new_bucket);
         }
 
         result
@@ -138,7 +132,8 @@ impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
 
         let stash = Vec::new();
 
-        let height: u32 = block_capacity.ilog2() - 1;
+        let height = block_capacity.ilog2() - 1;
+        assert!(height <= MAXIMUM_TREE_HEIGHT);
 
         // We initialize the physical memory with blocks containing 0
         let permuted_addresses = 0..block_capacity;
@@ -159,11 +154,10 @@ impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
                 bucket_to_write.blocks[block_index] = PathOramBlock::<B> {
                     value: BlockValue::<B>::default(),
                     address: permuted_addresses[address_index],
-                    position: leaf_index as u64,
+                    position: leaf_index as TreeIndex,
                 };
                 position_map.write(
-                    permuted_addresses[address_index],
-                    CompleteBinaryTreeIndex::new(height, leaf_index as u64),
+                    permuted_addresses[address_index], leaf_index as TreeIndex,
                 );
             }
             physical_memory.write(leaf_index, bucket_to_write);
@@ -188,15 +182,15 @@ impl<const B: usize, const Z: usize, R: Rng> Oram<B, R>
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct PathOramBlock<const B: usize> {
+struct PathOramBlock<const B: BlockSizeType> {
     value: BlockValue<B>,
     address: IndexType,
-    position: u64,
+    position: TreeIndex,
 }
 
-impl<const B: usize> PathOramBlock<B> {
+impl<const B: BlockSizeType> PathOramBlock<B> {
     const DUMMY_ADDRESS: IndexType = IndexType::MAX;
-    const DUMMY_POSITION: u64 = u64::MAX;
+    const DUMMY_POSITION: TreeIndex = u64::MAX;
 
     fn dummy() -> Self {
         Self {
@@ -207,7 +201,7 @@ impl<const B: usize> PathOramBlock<B> {
     }
 }
 
-impl<const B: usize> ConditionallySelectable for PathOramBlock<B> {
+impl<const B: BlockSizeType> ConditionallySelectable for PathOramBlock<B> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let value = BlockValue::conditional_select(&a.value, &b.value, choice);
         let address =
@@ -224,11 +218,11 @@ impl<const B: usize> ConditionallySelectable for PathOramBlock<B> {
 #[repr(align(4096))]
 #[derive(Clone, Copy, Debug)]
 /// A Path ORAM bucket.
-pub struct Bucket<const B: usize, const Z: usize> {
+pub struct Bucket<const B: BlockSizeType, const Z: BucketSizeType> {
     blocks: [PathOramBlock<B>; Z],
 }
 
-impl<const B: usize, const Z: usize> Default for Bucket<B, Z> {
+impl<const B: BlockSizeType, const Z: BucketSizeType> Default for Bucket<B, Z> {
     fn default() -> Self {
         Self {
             blocks: [PathOramBlock::<B>::dummy(); Z],
@@ -236,103 +230,116 @@ impl<const B: usize, const Z: usize> Default for Bucket<B, Z> {
     }
 }
 
-/// Represents the array index of an element in a binary tree laid out as an array.
-#[derive(Clone, Copy, Debug)]
-pub struct CompleteBinaryTreeIndex {
-    /// The height of the tree in which this `CompleteBinaryTreeIndex` represents a node.
-    tree_height: u32,
-    /// The index of the node represented by this `CompleteBinaryTreeIndex`.
-    index: u64,
-    /// The depth of the node represented by this `CompleteBinaryTreeIndex`.
-    /// The root has depth 0 and the leaves have depth `tree_height`.
-    depth: u32,
+trait CompleteBinaryTreeIndex {
+    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self;
+    fn random_leaf<R: Rng>(tree_height: TreeHeight, rng: R) -> Self;
+    fn depth(&self) -> TreeHeight;
+    fn is_leaf(&self, height: TreeHeight) -> bool;
 }
 
-impl CompleteBinaryTreeIndex {
-    fn new(tree_height: u32, index: u64) -> Self {
-        assert_ne!(index, 0);
-        assert!(tree_height <= MAXIMUM_TREE_HEIGHT);
-        let tree_size = 2u64.pow(tree_height + 1);
-        assert!(index < tree_size);
-
-        let leading_zeroes = index.leading_zeros();
-        let index_bitlength = 8 * (size_of_val(&index) as u32);
-        let depth = index_bitlength - leading_zeroes - 1;
-        CompleteBinaryTreeIndex {
-            tree_height,
-            index,
-            depth,
-        }
+impl CompleteBinaryTreeIndex for TreeIndex {
+    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self {
+        assert!(self.is_leaf(height));
+        let shift = height - depth;
+        let node_index = self >> shift;
+        node_index
     }
 
-    fn node_on_path(leaf: CompleteBinaryTreeIndex, depth: u32) -> CompleteBinaryTreeIndex {
-        assert!(leaf.is_leaf());
-        let leaf_index = leaf.index;
-        let height = leaf.tree_height;
-        let shift = leaf.tree_height - depth;
-        let node_index = leaf_index >> shift;
-        CompleteBinaryTreeIndex::new(height, node_index)
+    fn random_leaf<R: Rng>(tree_height: TreeHeight, mut rng: R) -> Self {
+        2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height))
     }
 
-    fn random_leaf<R: Rng>(tree_height: u32, mut rng: R) -> Self {
-        let random_index = 2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height));
-        let result = CompleteBinaryTreeIndex::new(tree_height, random_index);
-        assert!(result.is_leaf());
-        result
+    fn depth(&self) -> TreeHeight {
+        let leading_zeroes = self.leading_zeros();
+        let index_bitlength = 8 * (size_of::<TreeIndex>() as TreeHeight);
+        index_bitlength - leading_zeroes - 1
     }
 
-    fn is_leaf(&self) -> bool {
-        self.depth == self.tree_height
+    fn is_leaf(&self, height: TreeHeight) -> bool {
+        self.depth() == height
     }
 }
 
-impl Default for CompleteBinaryTreeIndex {
-    fn default() -> Self {
-        CompleteBinaryTreeIndex::new(1, 1)
-    }
-}
-
-/// A type alias for a simple `NonrecursiveClientStashPathOram` monomorphization.
-pub type VecPathOram<const B: usize> =
-    NonrecursiveClientStashPathOram<B, DEFAULT_BLOCKS_PER_BUCKET, StdRng>;
+/// A type alias for a simple `SimpleInsecurePathOram` monomorphization.
+pub type ConcreteSimpleInsecurePathOram<const B: BlockSizeType> =
+    SimpleInsecurePathOram<B, DEFAULT_BLOCKS_PER_BUCKET, StdRng>;
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        path_oram::VecPathOram,
-        test_utils::{
-            create_correctness_test, test_correctness_linear_workload,
-            test_correctness_random_workload,
-        },
+    use crate::test_utils::{
+        create_correctness_test, test_correctness_linear_workload, test_correctness_random_workload,
     };
 
+    use super::ConcreteSimpleInsecurePathOram;
     create_correctness_test!(
         test_correctness_random_workload,
-        VecPathOram,
+        ConcreteSimpleInsecurePathOram,
         64,
         256,
         10000
     );
-    create_correctness_test!(test_correctness_random_workload, VecPathOram, 1, 64, 10000);
-    create_correctness_test!(test_correctness_random_workload, VecPathOram, 64, 64, 10000);
     create_correctness_test!(
         test_correctness_random_workload,
-        VecPathOram,
+        ConcreteSimpleInsecurePathOram,
+        1,
+        64,
+        10000
+    );
+    create_correctness_test!(
+        test_correctness_random_workload,
+        ConcreteSimpleInsecurePathOram,
+        64,
+        64,
+        10000
+    );
+    create_correctness_test!(
+        test_correctness_random_workload,
+        ConcreteSimpleInsecurePathOram,
         4096,
         64,
         1000
     );
     create_correctness_test!(
         test_correctness_random_workload,
-        VecPathOram,
+        ConcreteSimpleInsecurePathOram,
         4096,
         256,
         1000
     );
 
-    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 64, 256, 100);
-    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 1, 64, 100);
-    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 64, 64, 100);
-    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 4096, 64, 10);
-    create_correctness_test!(test_correctness_linear_workload, VecPathOram, 4096, 256, 2);
+    create_correctness_test!(
+        test_correctness_linear_workload,
+        ConcreteSimpleInsecurePathOram,
+        64,
+        256,
+        100
+    );
+    create_correctness_test!(
+        test_correctness_linear_workload,
+        ConcreteSimpleInsecurePathOram,
+        1,
+        64,
+        100
+    );
+    create_correctness_test!(
+        test_correctness_linear_workload,
+        ConcreteSimpleInsecurePathOram,
+        64,
+        64,
+        100
+    );
+    create_correctness_test!(
+        test_correctness_linear_workload,
+        ConcreteSimpleInsecurePathOram,
+        4096,
+        64,
+        10
+    );
+    create_correctness_test!(
+        test_correctness_linear_workload,
+        ConcreteSimpleInsecurePathOram,
+        4096,
+        256,
+        2
+    );
 }

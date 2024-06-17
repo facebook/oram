@@ -16,7 +16,8 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use oram::{BlockValue, IndexType, Oram};
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
 
-use oram::{path_oram::VecPathOram, LinearOram};
+use oram::linear_time_oram::ConcreteLinearTimeOram;
+use oram::simple_insecure_path_oram::ConcreteSimpleInsecurePathOram;
 
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
@@ -27,7 +28,7 @@ trait Instrumented {
     fn short_name() -> String;
 }
 
-impl<const B: usize> Instrumented for LinearOram<B> {
+impl<const B: usize> Instrumented for ConcreteLinearTimeOram<B> {
     fn get_read_count(&self) -> u128 {
         return self.physical_memory.get_read_count();
     }
@@ -41,7 +42,7 @@ impl<const B: usize> Instrumented for LinearOram<B> {
     }
 }
 
-impl<const B: usize> Instrumented for VecPathOram<B> {
+impl<const B: usize> Instrumented for ConcreteSimpleInsecurePathOram<B> {
     fn get_read_count(&self) -> u128 {
         return self.physical_memory.get_read_count();
     }
@@ -58,40 +59,40 @@ impl<const B: usize> Instrumented for VecPathOram<B> {
 // Here, all benchmarks are run for linear and path ORAMs, and block sizes of 64 and 4096.
 criterion_group!(
     benches,
-    benchmark_initialization::<64, LinearOram<64>>,
-    benchmark_initialization::<4096, LinearOram<4096>>,
-    benchmark_read::<64, LinearOram<64>>,
-    benchmark_read::<4096, LinearOram<4096>>,
-    benchmark_write::<64, LinearOram<64>>,
-    benchmark_write::<4096, LinearOram<4096>>,
-    benchmark_random_operations::<64, LinearOram<64>>,
-    benchmark_random_operations::<4096, LinearOram<4096>>,
+    benchmark_initialization::<64, ConcreteLinearTimeOram<64>>,
+    benchmark_initialization::<4096, ConcreteLinearTimeOram<4096>>,
+    benchmark_read::<64, ConcreteLinearTimeOram<64>>,
+    benchmark_read::<4096, ConcreteLinearTimeOram<4096>>,
+    benchmark_write::<64, ConcreteLinearTimeOram<64>>,
+    benchmark_write::<4096, ConcreteLinearTimeOram<4096>>,
+    benchmark_random_operations::<64, ConcreteLinearTimeOram<64>>,
+    benchmark_random_operations::<4096, ConcreteLinearTimeOram<4096>>,
     print_read_header,
-    count_accesses_on_read::<64, LinearOram<64>>,
-    count_accesses_on_read::<4096, LinearOram<4096>>,
+    count_accesses_on_read::<64, ConcreteLinearTimeOram<64>>,
+    count_accesses_on_read::<4096, ConcreteLinearTimeOram<4096>>,
     print_write_header,
-    count_accesses_on_write::<64, LinearOram<64>>,
-    count_accesses_on_write::<4096, LinearOram<4096>>,
+    count_accesses_on_write::<64, ConcreteLinearTimeOram<64>>,
+    count_accesses_on_write::<4096, ConcreteLinearTimeOram<4096>>,
     print_random_operations_header,
-    count_accesses_on_random_workload::<64, LinearOram<64>>,
-    count_accesses_on_random_workload::<4096, LinearOram<4096>>,
-    benchmark_initialization::<64, VecPathOram<64>>,
-    benchmark_initialization::<4096, VecPathOram<4096>>,
-    benchmark_read::<64, VecPathOram<64>>,
-    benchmark_read::<4096, VecPathOram<4096>>,
-    benchmark_write::<64, VecPathOram<64>>,
-    benchmark_write::<4096, VecPathOram<4096>>,
-    benchmark_random_operations::<64, VecPathOram<64>>,
-    benchmark_random_operations::<4096, VecPathOram<4096>>,
+    count_accesses_on_random_workload::<64, ConcreteLinearTimeOram<64>>,
+    count_accesses_on_random_workload::<4096, ConcreteLinearTimeOram<4096>>,
+    benchmark_initialization::<64, ConcreteSimpleInsecurePathOram<64>>,
+    benchmark_initialization::<4096, ConcreteSimpleInsecurePathOram<4096>>,
+    benchmark_read::<64, ConcreteSimpleInsecurePathOram<64>>,
+    benchmark_read::<4096, ConcreteSimpleInsecurePathOram<4096>>,
+    benchmark_write::<64, ConcreteSimpleInsecurePathOram<64>>,
+    benchmark_write::<4096, ConcreteSimpleInsecurePathOram<4096>>,
+    benchmark_random_operations::<64, ConcreteSimpleInsecurePathOram<64>>,
+    benchmark_random_operations::<4096, ConcreteSimpleInsecurePathOram<4096>>,
     print_read_header,
-    count_accesses_on_read::<64, VecPathOram<64>>,
-    count_accesses_on_read::<4096, VecPathOram<4096>>,
+    count_accesses_on_read::<64, ConcreteSimpleInsecurePathOram<64>>,
+    count_accesses_on_read::<4096, ConcreteSimpleInsecurePathOram<4096>>,
     print_write_header,
-    count_accesses_on_write::<64, VecPathOram<64>>,
-    count_accesses_on_write::<4096, VecPathOram<4096>>,
+    count_accesses_on_write::<64, ConcreteSimpleInsecurePathOram<64>>,
+    count_accesses_on_write::<4096, ConcreteSimpleInsecurePathOram<4096>>,
     print_random_operations_header,
-    count_accesses_on_random_workload::<64, VecPathOram<64>>,
-    count_accesses_on_random_workload::<4096, VecPathOram<4096>>,
+    count_accesses_on_random_workload::<64, ConcreteSimpleInsecurePathOram<64>>,
+    count_accesses_on_random_workload::<4096, ConcreteSimpleInsecurePathOram<4096>>,
 );
 criterion_main!(benches);
 
@@ -154,7 +155,7 @@ fn count_accesses_on_random_workload<const B: usize, T: Oram<B, StdRng> + Instru
 }
 
 fn benchmark_initialization<const B: usize, T: Oram<B, StdRng> + Instrumented>(c: &mut Criterion) {
-    let mut group = c.benchmark_group(T::short_name() + "initialization");
+    let mut group = c.benchmark_group(T::short_name() + "::initialization");
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
         group.bench_with_input(
             BenchmarkId::from_parameter(ReadWriteParameters {
@@ -168,7 +169,7 @@ fn benchmark_initialization<const B: usize, T: Oram<B, StdRng> + Instrumented>(c
 }
 
 fn benchmark_read<const B: usize, T: Oram<B, StdRng> + Instrumented>(c: &mut Criterion) {
-    let mut group = c.benchmark_group(T::short_name() + "read");
+    let mut group = c.benchmark_group(T::short_name() + "::read");
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
         let mut oram = T::new(*capacity, StdRng::seed_from_u64(0));
         group.bench_function(
@@ -182,7 +183,7 @@ fn benchmark_read<const B: usize, T: Oram<B, StdRng> + Instrumented>(c: &mut Cri
 }
 
 fn benchmark_write<const B: usize, T: Oram<B, StdRng> + Instrumented>(c: &mut Criterion) {
-    let mut group = c.benchmark_group(T::short_name() + "write");
+    let mut group = c.benchmark_group(T::short_name() + "::write");
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
         let mut oram = T::new(*capacity, StdRng::seed_from_u64(0));
         group.bench_function(
@@ -198,7 +199,7 @@ fn benchmark_write<const B: usize, T: Oram<B, StdRng> + Instrumented>(c: &mut Cr
 fn benchmark_random_operations<const B: usize, T: Oram<B, StdRng> + Instrumented>(
     c: &mut Criterion,
 ) {
-    let mut group = c.benchmark_group(T::short_name() + "random_operations");
+    let mut group = c.benchmark_group(T::short_name() + "::random_operations");
 
     for capacity in CAPACITIES_TO_BENCHMARK {
         let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
