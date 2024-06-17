@@ -96,10 +96,15 @@ criterion_group!(
 );
 criterion_main!(benches);
 
-fn count_accesses_on_read<const B: usize, T: Oram<B, StdRng> + Instrumented>(_: &mut Criterion) {
+// Duplicated from lib.rs, but this duplication is fixed in subsequent PRs.
+/// A type alias for a simple `LinearTimeOram` monomorphization.
+pub type LinearOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
+
+fn count_accesses_on_read<const B: usize>(_: &mut Criterion) {
+    let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
-        oram.read(black_box(0));
+        let mut oram = LinearOram::<B>::new(capacity, &mut rng);
+        oram.read(black_box(0), &mut rng);
 
         let read_count = oram.get_read_count();
         let write_count = oram.get_write_count();
@@ -108,10 +113,12 @@ fn count_accesses_on_read<const B: usize, T: Oram<B, StdRng> + Instrumented>(_: 
     }
 }
 
-fn count_accesses_on_write<const B: usize, T: Oram<B, StdRng> + Instrumented>(_: &mut Criterion) {
+fn count_accesses_on_write<const B: usize>(_: &mut Criterion) {
+    let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
-        oram.write(black_box(0), black_box(BlockValue::default()));
+        let mut oram = LinearOram::<B>::new(capacity, &mut rng);
+
+        oram.write(black_box(0), black_box(BlockValue::default()), &mut rng);
 
         let read_count = oram.get_read_count();
         let write_count = oram.get_write_count();
@@ -138,8 +145,8 @@ fn count_accesses_on_random_workload<const B: usize, T: Oram<B, StdRng> + Instru
             index_randomness[i] = rng.gen_range(0..capacity);
         }
 
-        let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
-        run_many_random_accesses::<B, T>(
+        let mut oram = LinearOram::<B>::new(capacity, &mut rng);
+        run_many_random_accesses(
             &mut oram,
             number_of_operations_to_run,
             black_box(&index_randomness),
@@ -154,8 +161,9 @@ fn count_accesses_on_random_workload<const B: usize, T: Oram<B, StdRng> + Instru
     }
 }
 
-fn benchmark_initialization<const B: usize, T: Oram<B, StdRng> + Instrumented>(c: &mut Criterion) {
-    let mut group = c.benchmark_group(T::short_name() + "::initialization");
+fn benchmark_initialization<const B: usize>(c: &mut Criterion) {
+    let mut group = c.benchmark_group("initialization");
+    let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
         group.bench_with_input(
             BenchmarkId::from_parameter(ReadWriteParameters {
@@ -163,46 +171,49 @@ fn benchmark_initialization<const B: usize, T: Oram<B, StdRng> + Instrumented>(c
                 block_size: B,
             }),
             capacity,
-            |b, capacity| b.iter(|| T::new(*capacity, StdRng::seed_from_u64(0))),
+            |b, &capacity| b.iter(|| LinearOram::<B>::new(capacity, &mut rng)),
         );
     }
 }
 
-fn benchmark_read<const B: usize, T: Oram<B, StdRng> + Instrumented>(c: &mut Criterion) {
-    let mut group = c.benchmark_group(T::short_name() + "::read");
+fn benchmark_read<const B: usize>(c: &mut Criterion) {
+    let mut group = c.benchmark_group("read");
+    let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram = T::new(*capacity, StdRng::seed_from_u64(0));
+        let mut oram = LinearOram::<B>::new(*capacity, &mut rng);
+
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
                 block_size: B,
             }),
-            |b| b.iter(|| oram.read(0)),
+            |b| b.iter(|| oram.read(0, &mut rng)),
         );
     }
 }
 
-fn benchmark_write<const B: usize, T: Oram<B, StdRng> + Instrumented>(c: &mut Criterion) {
-    let mut group = c.benchmark_group(T::short_name() + "::write");
+fn benchmark_write<const B: usize>(c: &mut Criterion) {
+    let mut group = c.benchmark_group("write");
+    let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram = T::new(*capacity, StdRng::seed_from_u64(0));
+        let mut oram = LinearOram::<B>::new(*capacity, &mut rng);
+
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
                 block_size: B,
             }),
-            |b| b.iter(|| oram.write(0, BlockValue::default())),
+            |b| b.iter(|| oram.write(0, BlockValue::default(), &mut rng)),
         );
     }
 }
 
-fn benchmark_random_operations<const B: usize, T: Oram<B, StdRng> + Instrumented>(
-    c: &mut Criterion,
-) {
-    let mut group = c.benchmark_group(T::short_name() + "::random_operations");
+fn benchmark_random_operations<const B: usize>(c: &mut Criterion) {
+    let mut group = c.benchmark_group("random_operations");
+    let mut rng = StdRng::seed_from_u64(0);
 
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity, StdRng::seed_from_u64(0));
+        let mut oram = LinearOram::<B>::new(capacity, &mut rng);
 
         let number_of_operations_to_run = 64 as usize;
 
@@ -243,26 +254,31 @@ fn benchmark_random_operations<const B: usize, T: Oram<B, StdRng> + Instrumented
     group.finish();
 }
 
-fn run_many_random_accesses<const B: usize, T: Oram<B, StdRng>>(
+fn run_many_random_accesses<const B: usize, T: Oram<B>>(
     oram: &mut T,
     number_of_operations_to_run: usize,
     index_randomness: &[IndexType],
     read_versus_write_randomness: &[bool],
     value_randomness: &[u8],
 ) -> BlockValue<B> {
+    let mut rng = StdRng::seed_from_u64(0);
     for operation_number in 0..number_of_operations_to_run {
         let random_index = index_randomness[operation_number];
         let random_read_versus_write: bool = read_versus_write_randomness[operation_number];
 
         if random_read_versus_write {
-            oram.read(random_index);
+            oram.read(random_index, &mut rng);
         } else {
             let block_size = oram.block_size();
             let start_index = block_size * random_index;
             let end_index = block_size * (random_index + 1);
             let random_bytes: [u8; B] =
                 value_randomness[start_index..end_index].try_into().unwrap();
-            oram.write(random_index, BlockValue::from_byte_array(random_bytes));
+            oram.write(
+                random_index,
+                BlockValue::from_byte_array(random_bytes),
+                &mut rng,
+            );
         }
     }
 

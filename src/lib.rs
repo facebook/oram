@@ -12,7 +12,7 @@
 use aligned::{Aligned, A64};
 use rand::{
     distributions::{Distribution, Standard},
-    Rng,
+    CryptoRng, Rng, RngCore,
 };
 use subtle::{Choice, ConditionallySelectable, CtOption};
 
@@ -39,13 +39,10 @@ pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSizeType = 4;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait Oram<const B: BlockSizeType, R: Rng> {
-    /// Returns a new `Oram` mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
-    fn new(block_capacity: IndexType, rng: R) -> Self
-    where
-        Self: Sized;
-
-    /// Returns the capacity in blocks of this `Oram`.
+pub trait Oram<const B: BlockSizeType> {
+    /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
+    fn new<R: RngCore + CryptoRng>(block_capacity: IndexType, rng: &mut R) -> Self;
+    /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> IndexType;
 
     /// Returns the size in bytes of each block of this `Oram`.
@@ -54,22 +51,28 @@ pub trait Oram<const B: BlockSizeType, R: Rng> {
     /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
     /// Returns the value previously stored at `index`.
-    fn access(
+    fn access<R: RngCore + CryptoRng>(
         &mut self,
         index: IndexType,
         optional_new_value: CtOption<BlockValue<B>>,
+        rng: &mut R,
     ) -> BlockValue<B>;
 
     /// Obliviously reads the value stored at `index`.
-    fn read(&mut self, index: IndexType) -> BlockValue<B> {
+    fn read<R: RngCore + CryptoRng>(&mut self, index: IndexType, rng: &mut R) -> BlockValue<B> {
         let ct_none = CtOption::new(BlockValue::default(), 0.into());
-        self.access(index, ct_none)
+        self.access(index, ct_none, rng)
     }
 
     /// Obliviously writes the value stored at `index`.
-    fn write(&mut self, index: IndexType, new_value: BlockValue<B>) {
+    fn write<R: RngCore + CryptoRng>(
+        &mut self,
+        index: IndexType,
+        new_value: BlockValue<B>,
+        rng: &mut R,
+    ) {
         let ct_some_new_value = CtOption::new(new_value, 1.into());
-        self.access(index, ct_some_new_value);
+        self.access(index, ct_some_new_value, rng);
     }
 }
 
