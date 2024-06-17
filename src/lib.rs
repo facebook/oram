@@ -12,9 +12,10 @@
 use aligned::{Aligned, A64};
 use rand::{
     distributions::{Distribution, Standard},
+    rngs::StdRng,
     Rng,
 };
-use std::ops::BitAnd;
+use std::{marker::PhantomData, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
 
 /// The numeric type used to specify the size of an ORAM in blocks, and to index into the ORAM.
@@ -24,9 +25,9 @@ pub type BlockSizeType = usize;
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait ORAM<const B: BlockSizeType> {
+pub trait Oram<const B: BlockSizeType, R: Rng> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
-    fn new(block_capacity: IndexType) -> Self
+    fn new(block_capacity: IndexType, rng: R) -> Self
     where
         Self: Sized;
 
@@ -184,16 +185,20 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
-pub struct LinearTimeORAM<DB> {
+pub struct LinearTimeOram<DB, R: Rng> {
     /// The memory of the ORAM.
     // Made this public for benchmarking, which ideally, I would not need to do.
     pub physical_memory: DB,
+    rng: PhantomData<R>,
 }
 
-impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> ORAM<B> for LinearTimeORAM<DB> {
-    fn new(block_capacity: IndexType) -> Self {
+impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
+    for LinearTimeOram<DB, R>
+{
+    fn new(block_capacity: IndexType, _: R) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
+            rng: PhantomData,
         }
     }
 
@@ -255,6 +260,9 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>> ORAM<B> for LinearTime
     }
 }
 
+/// A type alias for a simple `LinearTimeORAM` monomorphization.
+pub type LinearOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>, StdRng>;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,11 +271,10 @@ mod tests {
 
     #[test]
     fn check_alignment() {
-        let irrelevant_capacity = 256;
+        let irrelevant_capacity = 64;
         let expected_alignment = 64;
-        let oram: LinearTimeORAM<SimpleDatabase<BlockValue<64>>> =
-            LinearTimeORAM::new(irrelevant_capacity);
-        for block in &oram.physical_memory.0 {
+        let database = SimpleDatabase::<BlockValue<64>>::new(irrelevant_capacity);
+        for block in &database.0 {
             assert_eq!(mem::align_of_val(block), expected_alignment);
         }
     }
@@ -275,7 +282,8 @@ mod tests {
     fn test_correctness_random_workload<const B: usize>(capacity: usize, num_operations: u32) {
         let mut rng = StdRng::seed_from_u64(0);
 
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<B>>> = LinearTimeORAM::new(capacity);
+        // let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<B>>> = LinearTimeORAM::new(capacity);
+        let mut oram: LinearOram<B> = LinearOram::new(capacity, StdRng::seed_from_u64(0));
         let mut mirror_array = vec![BlockValue::default(); capacity];
 
         for _ in 0..num_operations {
@@ -330,7 +338,7 @@ mod tests {
     fn test_correctness_linear_workload<const B: usize>(capacity: usize, num_passes: u32) {
         let mut rng = StdRng::seed_from_u64(0);
 
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<B>>> = LinearTimeORAM::new(capacity);
+        let mut oram: LinearOram<B> = LinearOram::new(capacity, StdRng::seed_from_u64(0));
 
         let mut mirror_array = vec![BlockValue::default(); capacity];
 

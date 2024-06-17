@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use oram::{BlockValue, CountAccessesDatabase, IndexType, LinearTimeORAM, SimpleDatabase, ORAM};
+use oram::{BlockValue, CountAccessesDatabase, IndexType, LinearTimeOram, Oram};
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
 
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
@@ -33,10 +33,13 @@ criterion_group!(
 );
 criterion_main!(benches);
 
+// Duplicated from lib.rs, but this duplication is fixed in subsequent PRs.
+/// A type alias for a simple `LinearTimeORAM` monomorphization.
+pub type LinearORAM<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>, StdRng>;
+
 fn count_accesses_on_read<const B: usize>(_: &mut Criterion) {
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram: LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>> =
-            LinearTimeORAM::new(capacity);
+        let mut oram = LinearORAM::<B>::new(capacity, StdRng::seed_from_u64(0));
         oram.read(black_box(0));
 
         let read_count = oram.physical_memory.get_read_count();
@@ -48,8 +51,8 @@ fn count_accesses_on_read<const B: usize>(_: &mut Criterion) {
 
 fn count_accesses_on_write<const B: usize>(_: &mut Criterion) {
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram: LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>> =
-            LinearTimeORAM::new(capacity);
+        let mut oram = LinearORAM::<B>::new(capacity, StdRng::seed_from_u64(0));
+
         oram.write(black_box(0), black_box(BlockValue::default()));
 
         let read_count = oram.physical_memory.get_read_count();
@@ -75,8 +78,7 @@ fn count_accesses_on_random_workload<const B: usize>(_: &mut Criterion) {
             index_randomness[i] = rng.gen_range(0..capacity);
         }
 
-        let mut oram: LinearTimeORAM<CountAccessesDatabase<BlockValue<B>>> =
-            LinearTimeORAM::new(capacity);
+        let mut oram = LinearORAM::<B>::new(capacity, StdRng::seed_from_u64(0));
         run_many_random_accesses(
             &mut oram,
             number_of_operations_to_run,
@@ -101,11 +103,7 @@ fn benchmark_initialization<const B: usize>(c: &mut Criterion) {
                 block_size: B,
             }),
             capacity,
-            |b, &capacity| {
-                b.iter(|| -> LinearTimeORAM<SimpleDatabase<BlockValue<B>>> {
-                    LinearTimeORAM::new(capacity)
-                })
-            },
+            |b, &capacity| b.iter(|| LinearORAM::<B>::new(capacity, StdRng::seed_from_u64(0))),
         );
     }
 }
@@ -113,8 +111,8 @@ fn benchmark_initialization<const B: usize>(c: &mut Criterion) {
 fn benchmark_read<const B: usize>(c: &mut Criterion) {
     let mut group = c.benchmark_group("read");
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<B>>> =
-            LinearTimeORAM::new(*capacity);
+        let mut oram = LinearORAM::<B>::new(*capacity, StdRng::seed_from_u64(0));
+
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
@@ -128,8 +126,8 @@ fn benchmark_read<const B: usize>(c: &mut Criterion) {
 fn benchmark_write<const B: usize>(c: &mut Criterion) {
     let mut group = c.benchmark_group("write");
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<B>>> =
-            LinearTimeORAM::new(*capacity);
+        let mut oram = LinearORAM::<B>::new(*capacity, StdRng::seed_from_u64(0));
+
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
@@ -144,10 +142,8 @@ fn benchmark_random_operations<const B: usize>(c: &mut Criterion) {
     let mut group = c.benchmark_group("random_operations");
 
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<64>>> =
-            LinearTimeORAM::new(capacity);
+        let mut oram = LinearORAM::<B>::new(capacity, StdRng::seed_from_u64(0));
 
-        // benchmark_random_operations_helper(&mut oram, &mut group);
         let number_of_operations_to_run = 64 as usize;
 
         let block_size = oram.block_size();
@@ -187,7 +183,7 @@ fn benchmark_random_operations<const B: usize>(c: &mut Criterion) {
     group.finish();
 }
 
-fn run_many_random_accesses<const B: usize, T: ORAM<B>>(
+fn run_many_random_accesses<const B: usize, T: Oram<B, StdRng>>(
     oram: &mut T,
     number_of_operations_to_run: usize,
     index_randomness: &[IndexType],
