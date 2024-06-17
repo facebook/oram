@@ -300,14 +300,35 @@ pub type VecPathORAM<const B: usize> =
 mod tests {
     use crate::{
         path_oram::VecPathORAM,
-        test_utils::{test_correctness_linear_workload, test_correctness_random_workload, create_correctness_test},
+        test_utils::{
+            create_correctness_test, test_correctness_linear_workload,
+            test_correctness_random_workload,
+        },
     };
 
-    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 64, 256, 10000);
+    create_correctness_test!(
+        test_correctness_random_workload,
+        VecPathORAM,
+        64,
+        256,
+        10000
+    );
     create_correctness_test!(test_correctness_random_workload, VecPathORAM, 1, 64, 10000);
     create_correctness_test!(test_correctness_random_workload, VecPathORAM, 64, 64, 10000);
-    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 4096, 64, 1000);
-    create_correctness_test!(test_correctness_random_workload, VecPathORAM, 4096, 256, 1000);
+    create_correctness_test!(
+        test_correctness_random_workload,
+        VecPathORAM,
+        4096,
+        64,
+        1000
+    );
+    create_correctness_test!(
+        test_correctness_random_workload,
+        VecPathORAM,
+        4096,
+        256,
+        1000
+    );
 
     create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 64, 256, 100);
     create_correctness_test!(test_correctness_linear_workload, VecPathORAM, 1, 64, 100);
