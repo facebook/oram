@@ -260,7 +260,7 @@ impl<const B: BlockSizeType, DB: Database<BlockValue<B>>, R: Rng> Oram<B, R>
     }
 }
 
-/// A type alias for a simple `LinearTimeORAM` monomorphization.
+/// A type alias for a simple `LinearTimeOram` monomorphization.
 pub type LinearOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>, StdRng>;
 
 #[cfg(test)]
@@ -282,7 +282,6 @@ mod tests {
     fn test_correctness_random_workload<const B: usize>(capacity: usize, num_operations: u32) {
         let mut rng = StdRng::seed_from_u64(0);
 
-        // let mut oram: LinearTimeORAM<SimpleDatabase<BlockValue<B>>> = LinearTimeORAM::new(capacity);
         let mut oram: LinearOram<B> = LinearOram::new(capacity, StdRng::seed_from_u64(0));
         let mut mirror_array = vec![BlockValue::default(); capacity];
 

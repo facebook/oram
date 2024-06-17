@@ -34,7 +34,7 @@ criterion_group!(
 criterion_main!(benches);
 
 // Duplicated from lib.rs, but this duplication is fixed in subsequent PRs.
-/// A type alias for a simple `LinearTimeORAM` monomorphization.
+/// A type alias for a simple `LinearTimeOram` monomorphization.
 pub type LinearOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>, StdRng>;
 
 fn count_accesses_on_read<const B: usize>(_: &mut Criterion) {
