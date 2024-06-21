@@ -21,6 +21,8 @@ use oram::simple_insecure_path_oram::ConcreteSimpleInsecurePathOram;
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
 
+// All benchmarks are run for block sizes of 64 and 4096.
+
 trait Instrumented {
     fn get_read_count(&self) -> u128;
     fn get_write_count(&self) -> u128;
@@ -123,33 +125,12 @@ fn count_accesses_on_operation<
 }
 
 fn count_accesses_on_read<const B: usize, T: Oram<B> + Instrumented>(_: &mut Criterion) {
-    // let mut rng = StdRng::seed_from_u64(0);
-    // for capacity in CAPACITIES_TO_BENCHMARK {
-    //     let mut oram = T::new(capacity, &mut rng);
-    //     oram.read(black_box(0), &mut rng);
-
-    //     let read_count = oram.get_read_count();
-    //     let write_count = oram.get_write_count();
-
-    //     print_table_row(capacity, B, read_count, write_count);
-    // }
-
     count_accesses_on_operation(|oram: &mut T, rng, _capacity| {
         oram.read(0, rng);
     });
 }
 
 fn count_accesses_on_write<const B: usize, T: Oram<B> + Instrumented>(_: &mut Criterion) {
-    // let mut rng = StdRng::seed_from_u64(0);
-    // for capacity in CAPACITIES_TO_BENCHMARK {
-    //     let mut oram = T::new(capacity, &mut rng);
-    //     oram.write(black_box(0), black_box(BlockValue::default()), &mut rng);
-
-    //     let read_count = oram.get_read_count();
-    //     let write_count = oram.get_write_count();
-
-    //     print_table_row(capacity, B, read_count, write_count);
-    // }
     count_accesses_on_operation(|oram: &mut T, rng: &mut StdRng, _capacity| {
         oram.write(0, BlockValue::default(), rng);
     });
@@ -177,34 +158,6 @@ fn count_accesses_on_random_workload<const B: usize, T: Oram<B> + Instrumented>(
             black_box(&value_randomness),
         );
     });
-    // let mut rng = StdRng::seed_from_u64(0);
-    // for capacity in CAPACITIES_TO_BENCHMARK {
-    //     let number_of_operations_to_run = 64usize;
-
-    //     let mut read_versus_write_randomness = vec![false; number_of_operations_to_run];
-    //     rng.fill(&mut read_versus_write_randomness[..]);
-    //     let mut value_randomness = vec![0u8; 4096 * capacity];
-    //     rng.fill(&mut value_randomness[..]);
-
-    //     let mut index_randomness = vec![0usize; number_of_operations_to_run];
-    //     for i in 0..number_of_operations_to_run {
-    //         index_randomness[i] = rng.gen_range(0..capacity);
-    //     }
-
-    //     let mut oram = T::new(capacity, &mut rng);
-    //     run_many_random_accesses::<B, T>(
-    //         &mut oram,
-    //         number_of_operations_to_run,
-    //         black_box(&index_randomness),
-    //         black_box(&read_versus_write_randomness),
-    //         black_box(&value_randomness),
-    //     );
-
-    //     let read_count = oram.get_read_count();
-    //     let write_count = oram.get_write_count();
-
-    //     print_table_row(capacity, B, read_count, write_count);
-    // }
 }
 
 fn benchmark_initialization<const B: usize, T: Oram<B> + Instrumented>(c: &mut Criterion) {
