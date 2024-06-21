@@ -47,13 +47,15 @@ pub(crate) fn test_correctness_random_workload<const B: usize, T: Oram<B>>(
 /// Tests the correctness of an `Oram` type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
 pub(crate) fn test_correctness_linear_workload<const B: usize, T: Oram<B>>(
     capacity: usize,
-    num_passes: u32,
+    num_operations: u32,
 ) {
     let mut rng = StdRng::seed_from_u64(0);
 
     let mut oram = T::new(capacity, &mut rng);
 
     let mut mirror_array = vec![BlockValue::default(); capacity];
+
+    let num_passes = (num_operations as usize) / capacity;
 
     for _ in 0..num_passes {
         for index in 0..capacity {
@@ -86,4 +88,35 @@ macro_rules! create_correctness_test {
     };
 }
 
+macro_rules! create_correctness_tests_for_workload_and_oram_type {
+    ($function_name: ident, $oram_type: ident) => {
+        create_correctness_test!($function_name, $oram_type, 1, 2, 10);
+        create_correctness_test!($function_name, $oram_type, 8, 2, 10);
+        create_correctness_test!($function_name, $oram_type, 16, 2, 100);
+        create_correctness_test!($function_name, $oram_type, 1, 16, 100);
+        create_correctness_test!($function_name, $oram_type, 8, 16, 100);
+        create_correctness_test!($function_name, $oram_type, 16, 16, 100);
+        create_correctness_test!($function_name, $oram_type, 1, 32, 100);
+        create_correctness_test!($function_name, $oram_type, 1, 32, 1000);
+        create_correctness_test!($function_name, $oram_type, 8, 32, 100);
+        // Block size 16 bytes, block capacity 32 blocks, testing with 100 operations
+        create_correctness_test!($function_name, $oram_type, 16, 32, 100);
+    };
+}
+
+macro_rules! create_correctness_tests_for_oram_type {
+    ($oram_type: ident) => {
+        create_correctness_tests_for_workload_and_oram_type!(
+            test_correctness_linear_workload,
+            $oram_type
+        );
+        create_correctness_tests_for_workload_and_oram_type!(
+            test_correctness_random_workload,
+            $oram_type
+        );
+    };
+}
+
 pub(crate) use create_correctness_test;
+pub(crate) use create_correctness_tests_for_oram_type;
+pub(crate) use create_correctness_tests_for_workload_and_oram_type;
