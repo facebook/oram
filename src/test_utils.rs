@@ -8,8 +8,6 @@
 //! This module contains common test utilities for crates generating tests utilizing the
 //! `oram` crate.
 
-#![cfg(test)]
-
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use crate::{BlockValue, Oram};

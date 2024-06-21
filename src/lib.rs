@@ -18,6 +18,8 @@ use subtle::{Choice, ConditionallySelectable, CtOption};
 
 pub mod linear_time_oram;
 pub mod simple_insecure_path_oram;
+
+#[cfg(test)]
 mod test_utils;
 
 /// The numeric type used to specify the size of an ORAM in blocks, and to index into the ORAM.
