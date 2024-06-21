@@ -97,7 +97,6 @@ criterion_group!(
 );
 criterion_main!(benches);
 
-
 fn count_accesses_on_operation<
     const B: usize,
     T: Oram<B> + Instrumented,
