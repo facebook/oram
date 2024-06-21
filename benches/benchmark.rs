@@ -110,7 +110,7 @@ fn count_accesses_on_operation<
 
         let read_count_before = oram.get_read_count();
         let write_count_before = oram.get_write_count();
-      
+
         // oram.read(black_box(0), &mut rng);
         operation(&mut oram, &mut rng, capacity);
 
@@ -149,7 +149,6 @@ fn count_accesses_on_random_workload<const B: usize, T: Oram<B> + Instrumented>(
         for i in 0..number_of_operations_to_run {
             index_randomness[i] = rng.gen_range(0..capacity);
         }
-
 
         run_many_random_accesses::<B, T>(
             oram,
