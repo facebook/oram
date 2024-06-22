@@ -8,8 +8,7 @@
 //! A simple, insecure implementation of Path ORAM with "client-side" stash and (non-recursive) position map.
 
 use crate::{
-    Address, BlockSize, BlockValue, BucketSizeType, CountAccessesDatabase, Database, Oram,
-    TreeHeight, TreeIndex, DEFAULT_BLOCKS_PER_BUCKET, MAXIMUM_TREE_HEIGHT,
+    Address, BucketSizeType, CountAccessesDatabase, Database, Oram, OramBlock, TreeHeight, TreeIndex, DEFAULT_BLOCKS_PER_BUCKET, MAXIMUM_TREE_HEIGHT
 };
 use rand::{seq::SliceRandom, CryptoRng, Rng, RngCore};
 use std::{mem::size_of, ops::BitAnd};
@@ -27,21 +26,21 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 /// The leakage will be addressed by more sophisticated stash access routines
 /// in one of the next few iterations.
 #[derive(Debug)]
-pub struct SimpleInsecurePathOram<const B: BlockSize, const Z: BucketSizeType> {
+pub struct SimpleInsecurePathOram<V: OramBlock, const Z: BucketSizeType> {
     /// Again, making the ORAM untrusted storage `physical_memory` public for now, for benchmarking purposes.
-    pub physical_memory: CountAccessesDatabase<Bucket<B, Z>>,
-    stash: Vec<PathOramBlock<B>>,
+    pub physical_memory: CountAccessesDatabase<Bucket<V, Z>>,
+    stash: Vec<PathOramBlock<V>>,
     position_map: CountAccessesDatabase<TreeIndex>,
     height: TreeHeight,
 }
 
-impl<const B: BlockSize, const Z: BucketSizeType> Oram<B> for SimpleInsecurePathOram<B, Z> {
+impl<V: OramBlock, const Z: BucketSizeType> Oram<V> for SimpleInsecurePathOram<V, Z> {
     fn access<R: Rng + CryptoRng>(
         &mut self,
         address: Address,
-        optional_new_value: subtle::CtOption<BlockValue<B>>,
+        optional_new_value: subtle::CtOption<V>,
         rng: &mut R,
-    ) -> BlockValue<B> {
+    ) -> V {
         let position = self.position_map.read(address);
         let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, rng);
         self.position_map.write(address, new_position);
@@ -68,7 +67,7 @@ impl<const B: BlockSize, const Z: BucketSizeType> Oram<B> for SimpleInsecurePath
         let height = block_capacity.ilog2() - 1;
         assert!(height <= MAXIMUM_TREE_HEIGHT);
 
-        let stash: Vec<PathOramBlock<B>> = Vec::new();
+        let stash: Vec<PathOramBlock<V>> = Vec::new();
 
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
@@ -77,7 +76,7 @@ impl<const B: BlockSize, const Z: BucketSizeType> Oram<B> for SimpleInsecurePath
 
         // Initialize the logical memory to contain 0 at every address
         let permuted_addresses =
-            SimpleInsecurePathOram::<B, Z>::random_permutation_of_0_through_n_exclusive(
+            SimpleInsecurePathOram::<V, Z>::random_permutation_of_0_through_n_exclusive(
                 block_capacity,
                 rng,
             );
@@ -89,11 +88,11 @@ impl<const B: BlockSize, const Z: BucketSizeType> Oram<B> for SimpleInsecurePath
 
         let addresses_per_leaf = 2;
         for leaf_index in first_leaf_index..=last_leaf_index {
-            let mut bucket_to_write = Bucket::<B, Z>::default();
+            let mut bucket_to_write = Bucket::<V, Z>::default();
             for slot_index in 0..addresses_per_leaf {
                 let address_index = (leaf_index - first_leaf_index) * 2 + slot_index;
-                bucket_to_write.blocks[slot_index] = PathOramBlock::<B> {
-                    value: BlockValue::<B>::default(),
+                bucket_to_write.blocks[slot_index] = PathOramBlock::<V> {
+                    value: V::default(),
                     address: permuted_addresses[address_index],
                     position: leaf_index as TreeIndex,
                 };
@@ -110,16 +109,12 @@ impl<const B: BlockSize, const Z: BucketSizeType> Oram<B> for SimpleInsecurePath
         }
     }
 
-    fn block_size(&self) -> Address {
-        B
-    }
-
     fn block_capacity(&self) -> Address {
         self.physical_memory.capacity()
     }
 }
 
-impl<const B: BlockSize, const Z: BucketSizeType> SimpleInsecurePathOram<B, Z> {
+impl<V: OramBlock, const Z: BucketSizeType> SimpleInsecurePathOram<V, Z> {
     fn read_path(&mut self, position: TreeIndex) {
         assert!(position.is_leaf(self.height));
         for depth in 0..=self.height {
@@ -138,12 +133,12 @@ impl<const B: BlockSize, const Z: BucketSizeType> SimpleInsecurePathOram<B, Z> {
     fn access_stash(
         &mut self,
         address: Address,
-        optional_new_value: CtOption<BlockValue<B>>,
+        optional_new_value: CtOption<V>,
         new_position: TreeIndex,
-    ) -> BlockValue<B> {
-        let value_to_write = optional_new_value.unwrap_or_else(BlockValue::default);
+    ) -> V {
+        let value_to_write = optional_new_value.unwrap_or_else(V::default);
         let oram_operation_is_write = optional_new_value.is_some();
-        let mut result: BlockValue<B> = BlockValue::default();
+        let mut result: V = V::default();
 
         // LEAK: The time taken by this loop leaks the size of the stash
         for block in &mut self.stash {
@@ -175,7 +170,7 @@ impl<const B: BlockSize, const Z: BucketSizeType> SimpleInsecurePathOram<B, Z> {
     fn write_bucket(&mut self, position: TreeIndex, depth: TreeHeight) {
         let bucket_address = position.node_on_path(depth, self.height);
 
-        let mut new_bucket: Bucket<B, Z> = Bucket::default();
+        let mut new_bucket: Bucket<V, Z> = Bucket::default();
 
         for slot_number in 0..DEFAULT_BLOCKS_PER_BUCKET {
             let slot = &mut new_bucket.blocks[slot_number];
@@ -186,12 +181,12 @@ impl<const B: BlockSize, const Z: BucketSizeType> SimpleInsecurePathOram<B, Z> {
             .write(bucket_address as usize, new_bucket);
     }
 
-    fn write_slot(&mut self, position: TreeIndex, depth: TreeHeight, slot: &mut PathOramBlock<B>) {
+    fn write_slot(&mut self, position: TreeIndex, depth: TreeHeight, slot: &mut PathOramBlock<V>) {
         let mut slot_already_written: Choice = 0.into();
 
         // LEAK: The time taken by this loop leaks the size of the stash.
         for stash_index in (0..self.stash.len()).rev() {
-            let stashed_block: &mut PathOramBlock<B> = &mut self.stash[stash_index];
+            let stashed_block: &mut PathOramBlock<V> = &mut self.stash[stash_index];
 
             let is_dummy = stashed_block.ct_is_dummy();
 
@@ -238,19 +233,19 @@ impl<const B: BlockSize, const Z: BucketSizeType> SimpleInsecurePathOram<B, Z> {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct PathOramBlock<const B: BlockSize> {
-    value: BlockValue<B>,
+struct PathOramBlock<V> {
+    value: V,
     address: Address,
     position: TreeIndex,
 }
 
-impl<const B: BlockSize> PathOramBlock<B> {
+impl<V: OramBlock> PathOramBlock<V> {
     const DUMMY_ADDRESS: Address = Address::MAX;
     const DUMMY_POSITION: TreeIndex = u64::MAX;
 
     fn dummy() -> Self {
         Self {
-            value: BlockValue::default(),
+            value: V::default(),
             address: Self::DUMMY_ADDRESS,
             position: Self::DUMMY_POSITION,
         }
@@ -261,13 +256,13 @@ impl<const B: BlockSize> PathOramBlock<B> {
     }
 }
 
-impl<const B: BlockSize> ConditionallySelectable for PathOramBlock<B> {
+impl<V: ConditionallySelectable> ConditionallySelectable for PathOramBlock<V> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-        let value = BlockValue::conditional_select(&a.value, &b.value, choice);
+        let value = V::conditional_select(&a.value, &b.value, choice);
         let address =
             u64::conditional_select(&(a.address as u64), &(b.address as u64), choice) as usize;
         let position = u64::conditional_select(&a.position, &b.position, choice);
-        PathOramBlock::<B> {
+        PathOramBlock::<V> {
             value,
             address,
             position,
@@ -278,14 +273,14 @@ impl<const B: BlockSize> ConditionallySelectable for PathOramBlock<B> {
 #[repr(align(4096))]
 #[derive(Clone, Copy, Debug)]
 /// A Path ORAM bucket.
-pub struct Bucket<const B: BlockSize, const Z: BucketSizeType> {
-    blocks: [PathOramBlock<B>; Z],
+pub struct Bucket<V: OramBlock, const Z: BucketSizeType> {
+    blocks: [PathOramBlock<V>; Z],
 }
 
-impl<const B: BlockSize, const Z: BucketSizeType> Default for Bucket<B, Z> {
+impl<V: OramBlock, const Z: BucketSizeType> Default for Bucket<V, Z> {
     fn default() -> Self {
         Self {
-            blocks: [PathOramBlock::<B>::dummy(); Z],
+            blocks: [PathOramBlock::<V>::dummy(); Z],
         }
     }
 }
@@ -320,8 +315,8 @@ impl CompleteBinaryTreeIndex for TreeIndex {
 }
 
 /// A type alias for a simple `SimpleInsecurePathOram` monomorphization.
-pub type ConcreteSimpleInsecurePathOram<const B: BlockSize> =
-    SimpleInsecurePathOram<B, DEFAULT_BLOCKS_PER_BUCKET>;
+pub type ConcreteSimpleInsecurePathOram<V> =
+    SimpleInsecurePathOram<V, DEFAULT_BLOCKS_PER_BUCKET>;
 
 #[cfg(test)]
 mod tests {
@@ -331,6 +326,9 @@ mod tests {
         test_correctness_random_workload,
     };
 
+    type BlockValue1 = BlockValue<1>;
+    type BlockValue64 = BlockValue<64>;
+    type BlockValue4096 = BlockValue<4096>;
     use super::ConcreteSimpleInsecurePathOram;
 
     create_correctness_tests_for_oram_type!(ConcreteSimpleInsecurePathOram);
