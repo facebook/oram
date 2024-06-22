@@ -64,6 +64,7 @@ impl<const B: BlockSize, const Z: BucketSizeType> Oram<B> for SimpleInsecurePath
         assert!(block_capacity > 1);
 
         let number_of_nodes = block_capacity;
+
         let height = block_capacity.ilog2() - 1;
         assert!(height <= MAXIMUM_TREE_HEIGHT);
 
@@ -325,79 +326,12 @@ pub type ConcreteSimpleInsecurePathOram<const B: BlockSize> =
 #[cfg(test)]
 mod tests {
     use crate::test_utils::{
-        create_correctness_test, test_correctness_linear_workload, test_correctness_random_workload,
+        create_correctness_test, create_correctness_tests_for_oram_type,
+        create_correctness_tests_for_workload_and_oram_type, test_correctness_linear_workload,
+        test_correctness_random_workload,
     };
 
     use super::ConcreteSimpleInsecurePathOram;
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteSimpleInsecurePathOram,
-        64,
-        256,
-        500
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteSimpleInsecurePathOram,
-        1,
-        64,
-        1000
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteSimpleInsecurePathOram,
-        64,
-        64,
-        1000
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteSimpleInsecurePathOram,
-        4096,
-        64,
-        500
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteSimpleInsecurePathOram,
-        4096,
-        256,
-        500
-    );
 
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteSimpleInsecurePathOram,
-        64,
-        256,
-        2
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteSimpleInsecurePathOram,
-        1,
-        64,
-        10
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteSimpleInsecurePathOram,
-        64,
-        64,
-        10
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteSimpleInsecurePathOram,
-        4096,
-        64,
-        2
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteSimpleInsecurePathOram,
-        4096,
-        256,
-        2
-    );
+    create_correctness_tests_for_oram_type!(ConcreteSimpleInsecurePathOram);
 }

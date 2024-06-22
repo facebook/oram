@@ -96,7 +96,8 @@ mod tests {
     use super::*;
     use crate::{
         test_utils::{
-            create_correctness_test, test_correctness_linear_workload,
+            create_correctness_test, create_correctness_tests_for_oram_type,
+            create_correctness_tests_for_workload_and_oram_type, test_correctness_linear_workload,
             test_correctness_random_workload,
         },
         SimpleDatabase,
@@ -113,90 +114,5 @@ mod tests {
         }
     }
 
-    // Block size 64 bytes, block capacity 256 bytes, testing with 10000 operations
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteLinearTimeOram,
-        64,
-        256,
-        10000
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteLinearTimeOram,
-        1,
-        64,
-        10000
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteLinearTimeOram,
-        64,
-        1,
-        10000
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteLinearTimeOram,
-        64,
-        64,
-        10000
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteLinearTimeOram,
-        4096,
-        64,
-        1000
-    );
-    create_correctness_test!(
-        test_correctness_random_workload,
-        ConcreteLinearTimeOram,
-        4096,
-        256,
-        1000
-    );
-
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteLinearTimeOram,
-        64,
-        256,
-        100
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteLinearTimeOram,
-        1,
-        64,
-        100
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteLinearTimeOram,
-        64,
-        1,
-        100
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteLinearTimeOram,
-        64,
-        64,
-        100
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteLinearTimeOram,
-        4096,
-        64,
-        10
-    );
-    create_correctness_test!(
-        test_correctness_linear_workload,
-        ConcreteLinearTimeOram,
-        4096,
-        256,
-        2
-    );
+    create_correctness_tests_for_oram_type!(ConcreteLinearTimeOram);
 }
