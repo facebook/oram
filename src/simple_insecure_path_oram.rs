@@ -8,7 +8,8 @@
 //! A simple, insecure implementation of Path ORAM with "client-side" stash and (non-recursive) position map.
 
 use crate::{
-    Address, BucketSizeType, CountAccessesDatabase, Database, Oram, OramBlock, TreeHeight, TreeIndex, DEFAULT_BLOCKS_PER_BUCKET, MAXIMUM_TREE_HEIGHT
+    Address, BucketSizeType, CountAccessesDatabase, Database, Oram, OramBlock, TreeHeight,
+    TreeIndex, DEFAULT_BLOCKS_PER_BUCKET, MAXIMUM_TREE_HEIGHT,
 };
 use rand::{seq::SliceRandom, CryptoRng, Rng, RngCore};
 use std::{mem::size_of, ops::BitAnd};
@@ -315,20 +316,18 @@ impl CompleteBinaryTreeIndex for TreeIndex {
 }
 
 /// A type alias for a simple `SimpleInsecurePathOram` monomorphization.
-pub type ConcreteSimpleInsecurePathOram<V> =
-    SimpleInsecurePathOram<V, DEFAULT_BLOCKS_PER_BUCKET>;
+pub type ConcreteSimpleInsecurePathOram<V> = SimpleInsecurePathOram<V, DEFAULT_BLOCKS_PER_BUCKET>;
 
 #[cfg(test)]
 mod tests {
+    use crate::BlockValue;
+
     use crate::test_utils::{
-        create_correctness_test, create_correctness_tests_for_oram_type,
+        create_correctness_test_block_value, create_correctness_tests_for_oram_type,
         create_correctness_tests_for_workload_and_oram_type, test_correctness_linear_workload,
         test_correctness_random_workload,
     };
 
-    type BlockValue1 = BlockValue<1>;
-    type BlockValue64 = BlockValue<64>;
-    type BlockValue4096 = BlockValue<4096>;
     use super::ConcreteSimpleInsecurePathOram;
 
     create_correctness_tests_for_oram_type!(ConcreteSimpleInsecurePathOram);

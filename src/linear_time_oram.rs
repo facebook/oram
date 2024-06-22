@@ -7,22 +7,28 @@
 
 //! A simple linear-time implementation of Oblivious RAM.
 
-use rand::{distributions::{Distribution, Standard}, CryptoRng, RngCore};
+use rand::{
+    distributions::{Distribution, Standard},
+    CryptoRng, RngCore,
+};
 use std::ops::BitAnd;
 use subtle::{ConstantTimeEq, ConstantTimeLess, CtOption};
 
-use crate::{Address, OramBlock, BlockValue, CountAccessesDatabase, Database, Oram};
+use crate::{Address, CountAccessesDatabase, Database, Oram, OramBlock};
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
 pub struct LinearTimeOram<DB> {
     /// The memory of the ORAM.
     // Made this public for benchmarking, which ideally, I would not need to do.
-    pub physical_memory: DB
+    pub physical_memory: DB,
 }
 
 // impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram<DB> {
-impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> where Standard: Distribution<V> {
+impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB>
+where
+    Standard: Distribution<V>,
+{
     fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
@@ -89,19 +95,18 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> where Standar
 }
 
 /// A type alias for a simple `LinearTimeOram` monomorphization.
-pub type ConcreteLinearTimeOram<const B: usize> =
-    LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
+pub type ConcreteLinearTimeOram<V> = LinearTimeOram<CountAccessesDatabase<V>>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         test_utils::{
-            create_correctness_test, create_correctness_tests_for_oram_type,
+            create_correctness_test_block_value, create_correctness_tests_for_oram_type,
             create_correctness_tests_for_workload_and_oram_type, test_correctness_linear_workload,
             test_correctness_random_workload,
         },
-        SimpleDatabase,
+        BlockValue, SimpleDatabase,
     };
     use std::mem;
 

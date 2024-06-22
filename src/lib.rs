@@ -39,7 +39,10 @@ pub type BucketSizeType = usize;
 pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSizeType = 4;
 
 /// TODO
-pub trait OramBlock: Copy + Clone + std::fmt::Debug + Default + PartialEq + ConditionallySelectable {}
+pub trait OramBlock:
+    Copy + Clone + std::fmt::Debug + Default + PartialEq + ConditionallySelectable
+{
+}
 
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
@@ -69,12 +72,7 @@ pub trait Oram<V: OramBlock> {
     }
 
     /// Obliviously writes the value stored at `index`.
-    fn write<R: RngCore + CryptoRng>(
-        &mut self,
-        index: Address,
-        new_value: V,
-        rng: &mut R,
-    ) {
+    fn write<R: RngCore + CryptoRng>(&mut self, index: Address, new_value: V, rng: &mut R) {
         let ct_some_new_value = CtOption::new(new_value, 1.into());
         self.access(index, ct_some_new_value, rng);
     }

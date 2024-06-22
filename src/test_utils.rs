@@ -8,7 +8,11 @@
 //! This module contains common test utilities for crates generating tests utilizing the
 //! `oram` crate.
 
-use rand::{distributions::{Distribution, Standard}, rngs::StdRng, Rng, SeedableRng};
+use rand::{
+    distributions::{Distribution, Standard},
+    rngs::StdRng,
+    Rng, SeedableRng,
+};
 
 use crate::{Oram, OramBlock};
 
@@ -16,8 +20,8 @@ use crate::{Oram, OramBlock};
 pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V>>(
     capacity: usize,
     num_operations: u32,
-) 
-where Standard: Distribution<V>
+) where
+    Standard: Distribution<V>,
 {
     let mut rng = StdRng::seed_from_u64(0);
 
@@ -50,8 +54,8 @@ where Standard: Distribution<V>
 pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V>>(
     capacity: usize,
     num_operations: u32,
-) 
-where Standard: Distribution<V>
+) where
+    Standard: Distribution<V>,
 {
     let mut rng = StdRng::seed_from_u64(0);
 
@@ -81,30 +85,41 @@ where Standard: Distribution<V>
     }
 }
 
-macro_rules! create_correctness_test {
-    ($function_name:ident, $oram_type: ident, $oram_value_type: ident, $block_capacity:expr, $iterations_to_test: expr) => {
+macro_rules! create_correctness_test_block_value {
+    ($function_name:ident, $oram_type: ident, $block_size: expr, $block_capacity:expr, $iterations_to_test: expr) => {
         paste::paste! {
             #[test]
-            fn [<$function_name _ $block_capacity _ $oram_value_type:snake _ $iterations_to_test>]() {
-                $function_name::<$oram_value_type, $oram_type<$oram_value_type>>($block_capacity, $iterations_to_test);
+            fn [<$function_name _ $block_capacity _ $block_size _ $iterations_to_test>]() {
+                $function_name::<BlockValue<$block_size>, $oram_type<BlockValue<$block_size>>>($block_capacity, $iterations_to_test);
             }
         }
     };
 }
 
+// macro_rules! create_correctness_test {
+//     ($function_name:ident, $oram_type: ident, $oram_value_type: ident, $block_capacity:expr, $iterations_to_test: expr) => {
+//         paste::paste! {
+//             #[test]
+//             fn [<$function_name _ $block_capacity _ $block_size _ $iterations_to_test>]() {
+//                 $function_name::<$oram_value_type, $oram_type<$oram_value_type>>($block_capacity, $iterations_to_test);
+//             }
+//         }
+//     };
+// }
+
 macro_rules! create_correctness_tests_for_workload_and_oram_type {
     ($function_name: ident, $oram_type: ident) => {
-        create_correctness_test!($function_name, $oram_type, 1, 2, 10);
-        create_correctness_test!($function_name, $oram_type, 8, 2, 10);
-        create_correctness_test!($function_name, $oram_type, 16, 2, 100);
-        create_correctness_test!($function_name, $oram_type, 1, 16, 100);
-        create_correctness_test!($function_name, $oram_type, 8, 16, 100);
-        create_correctness_test!($function_name, $oram_type, 16, 16, 100);
-        create_correctness_test!($function_name, $oram_type, 1, 32, 100);
-        create_correctness_test!($function_name, $oram_type, 1, 32, 1000);
-        create_correctness_test!($function_name, $oram_type, 8, 32, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, 1, 2, 10);
+        create_correctness_test_block_value!($function_name, $oram_type, 8, 2, 10);
+        create_correctness_test_block_value!($function_name, $oram_type, 16, 2, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, 1, 16, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, 8, 16, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, 16, 16, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, 1, 32, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, 1, 32, 1000);
+        create_correctness_test_block_value!($function_name, $oram_type, 8, 32, 100);
         // Block size 16 bytes, block capacity 32 blocks, testing with 100 operations
-        create_correctness_test!($function_name, $oram_type, 16, 32, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, 16, 32, 100);
     };
 }
 
@@ -121,6 +136,6 @@ macro_rules! create_correctness_tests_for_oram_type {
     };
 }
 
-pub(crate) use create_correctness_test;
+pub(crate) use create_correctness_test_block_value;
 pub(crate) use create_correctness_tests_for_oram_type;
 pub(crate) use create_correctness_tests_for_workload_and_oram_type;
