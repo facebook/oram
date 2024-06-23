@@ -11,13 +11,67 @@
 use rand::{
     distributions::{Distribution, Standard},
     rngs::StdRng,
-    Rng, SeedableRng,
+    CryptoRng, Rng, RngCore, SeedableRng,
 };
 
-use crate::{Oram, OramBlock};
+use duplicate::duplicate_item;
+
+use crate::{
+    linear_time_oram::ConcreteLinearTimeOram,
+    simple_insecure_path_oram::ConcreteSimpleInsecurePathOram, Address, CountAccessesDatabase,
+    Database, Oram, OramBlock, SimpleDatabase,
+};
+pub(crate) trait TestableMemory<V: OramBlock> {
+    fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R) -> Self;
+
+    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, rng: &mut R) -> V;
+
+    fn write<R: RngCore + CryptoRng>(&mut self, index: Address, new_value: V, rng: &mut R);
+}
+
+#[duplicate_item(
+    oram_type;
+    [ConcreteLinearTimeOram];
+    [ConcreteSimpleInsecurePathOram];
+)]
+impl<V: OramBlock> TestableMemory<V> for oram_type<V>
+where
+    Standard: Distribution<V>,
+{
+    fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R) -> Self {
+        Oram::new(block_capacity, rng)
+    }
+
+    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, rng: &mut R) -> V {
+        Oram::read(self, index, rng)
+    }
+
+    fn write<R: RngCore + CryptoRng>(&mut self, index: Address, new_value: V, rng: &mut R) {
+        Oram::write(self, index, new_value, rng)
+    }
+}
+
+#[duplicate_item(
+    database_type;
+    [SimpleDatabase];
+    [CountAccessesDatabase];
+)]
+impl<V: OramBlock> TestableMemory<V> for database_type<V> {
+    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Self {
+        Database::new(block_capacity)
+    }
+
+    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, _: &mut R) -> V {
+        Database::read(self, index)
+    }
+
+    fn write<R: RngCore + CryptoRng>(&mut self, index: Address, new_value: V, _: &mut R) {
+        Database::write(self, index, new_value)
+    }
+}
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
-pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V>>(
+pub(crate) fn test_correctness_random_workload<V: OramBlock, T: TestableMemory<V>>(
     capacity: usize,
     num_operations: u32,
 ) where
@@ -51,7 +105,7 @@ pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V>>(
 }
 
 /// Tests the correctness of an `Oram` type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
-pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V>>(
+pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: TestableMemory<V>>(
     capacity: usize,
     num_operations: u32,
 ) where
@@ -89,7 +143,7 @@ macro_rules! create_correctness_test_block_value {
     ($function_name:ident, $oram_type: ident, $block_size: expr, $block_capacity:expr, $iterations_to_test: expr) => {
         paste::paste! {
             #[test]
-            fn [<$function_name _ $block_capacity _ $block_size _ $iterations_to_test>]() {
+            fn [<$function_name _ $oram_type:snake _ $block_capacity _ $block_size _ $iterations_to_test>]() {
                 $function_name::<BlockValue<$block_size>, $oram_type<BlockValue<$block_size>>>($block_capacity, $iterations_to_test);
             }
         }

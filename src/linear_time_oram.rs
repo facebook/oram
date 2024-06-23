@@ -115,6 +115,5 @@ mod tests {
             assert_eq!(mem::align_of_val(block), expected_alignment);
         }
     }
-
     create_correctness_tests_for_oram_type!(ConcreteLinearTimeOram);
 }
