@@ -16,7 +16,7 @@ use oram::{Address, BlockSize, BlockValue, Oram, OramBlock};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use oram::linear_time_oram::ConcreteLinearTimeOram;
-use oram::simple_insecure_path_oram::ConcreteSimpleInsecurePathOram;
+use oram::path_oram::simple_insecure_path_oram::ConcreteSimpleInsecurePathOram;
 
 const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
