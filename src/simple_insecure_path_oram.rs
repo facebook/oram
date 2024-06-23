@@ -330,6 +330,5 @@ mod tests {
 
     use super::ConcreteSimpleInsecurePathOram;
 
-    // create_correctness_tests_for_oram_type!()
     create_correctness_tests_for_oram_type!(ConcreteSimpleInsecurePathOram);
 }
