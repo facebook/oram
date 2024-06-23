@@ -38,7 +38,7 @@ pub type BucketSizeType = usize;
 /// Here we adopt the more conservative setting of 4.
 pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSizeType = 4;
 
-/// TODO
+/// The smallest unit of memory readable/writable by the ORAM.
 pub trait OramBlock:
     Copy + Clone + std::fmt::Debug + Default + PartialEq + ConditionallySelectable
 {
@@ -78,7 +78,7 @@ pub trait Oram<V: OramBlock> {
     }
 }
 
-/// The smallest unit of memory readable/writable by the ORAM.
+/// An `OramBlock` consisting of unstructured bytes.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlockValue<const B: BlockSize>(Aligned<A64, [u8; B]>);
 
