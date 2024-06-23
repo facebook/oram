@@ -35,10 +35,6 @@ where
         }
     }
 
-    // fn block_size(&self) -> BlockSize {
-    //     B
-    // }
-
     fn access<R: RngCore + CryptoRng>(
         &mut self,
         index: Address,

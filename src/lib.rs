@@ -52,9 +52,6 @@ pub trait Oram<V: OramBlock> {
     /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> Address;
 
-    /// Returns the size in bytes of each block of this `Oram`.
-    // fn block_size(&self) -> BlockSize;
-
     /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
     /// Returns the value previously stored at `index`.

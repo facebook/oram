@@ -96,17 +96,6 @@ macro_rules! create_correctness_test_block_value {
     };
 }
 
-// macro_rules! create_correctness_test {
-//     ($function_name:ident, $oram_type: ident, $oram_value_type: ident, $block_capacity:expr, $iterations_to_test: expr) => {
-//         paste::paste! {
-//             #[test]
-//             fn [<$function_name _ $block_capacity _ $block_size _ $iterations_to_test>]() {
-//                 $function_name::<$oram_value_type, $oram_type<$oram_value_type>>($block_capacity, $iterations_to_test);
-//             }
-//         }
-//     };
-// }
-
 macro_rules! create_correctness_tests_for_workload_and_oram_type {
     ($function_name: ident, $oram_type: ident) => {
         create_correctness_test_block_value!($function_name, $oram_type, 1, 2, 10);
