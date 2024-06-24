@@ -58,30 +58,13 @@ where
             // Read from memory
             let entry = self.physical_memory.read(i);
 
-            // Client-side processing
-            // let is_requested_index: Choice = (u8::from(index == i)).into();
             let is_requested_index = (i as Address).ct_eq(&index);
 
-            // Based on whether the loop counter matches the requested index,
-            // conditionally read the value in memory into the result of the access.
             result.conditional_assign(&entry, is_requested_index);
 
-            // let oram_operation_is_write = optional_new_value.is_some();
-            // let should_write = is_requested_index.bitand(oram_operation_is_write);
-            // Note that the unwrap_or_else method of CtOption is constant-time.
-            // let value_to_write = optional_new_value.unwrap_or_else(V::default);
-
-            // let value_to_write = callback(&entry);
-
-            // Based on whether (1) the loop counter matches the requested index,
-            // AND (2) this ORAM access is a write,
-            // select the value to be written back out to memory to be either the original value
-            // or the provided new value.
             let potentially_updated_value =
                 V::conditional_select(&entry, &callback(&entry), is_requested_index);
-            // End client-side processing
 
-            // Write the (potentially) updated value back to memory.
             self.physical_memory.write(i, potentially_updated_value);
         }
         result

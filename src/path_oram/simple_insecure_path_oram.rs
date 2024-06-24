@@ -155,27 +155,14 @@ impl<V: OramBlock, const Z: BucketSizeType> SimpleInsecurePathOram<V, Z> {
                 .position
                 .conditional_assign(&new_position, is_requested_index);
 
-            // let should_write = is_requested_index.bitand(oram_operation_is_write);
-            // Write new value and position into target block in case of write
-
             let value_to_write = callback(&result);
 
             block
                 .value
                 .conditional_assign(&value_to_write, is_requested_index);
-            // block.value = value_to_write;
         }
         result
     }
-
-    // fn access_stash<F: FnOnce(&V) -> V>(
-    //     &mut self,
-    //     address: Address,
-    //     callback: F,
-    //     new_position: TreeIndex,
-    // ) -> V {
-    //     let linear_time_oram = LinearTimeOram
-    // }
 
     fn write_path(&mut self, position: TreeIndex) {
         for depth in (0..=self.height).rev() {

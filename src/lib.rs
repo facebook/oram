@@ -59,20 +59,17 @@ pub trait Oram<V: OramBlock> {
         &mut self,
         index: Address,
         callback: F,
-        // optional_new_value: CtOption<V>,
         rng: &mut R,
     ) -> V;
 
     /// Obliviously reads the value stored at `index`.
     fn read<R: RngCore + CryptoRng>(&mut self, index: Address, rng: &mut R) -> V {
-        // let ct_none = CtOption::new(V::default(), 0.into());
         let callback = |x: &V| *x;
         self.access(index, callback, rng)
     }
 
     /// Obliviously writes the value stored at `index`.
     fn write<R: RngCore + CryptoRng>(&mut self, index: Address, new_value: V, rng: &mut R) {
-        // let ct_some_new_value = CtOption::new(new_value, 1.into());
         let callback = |_: &V| new_value;
         self.access(index, callback, rng);
     }
