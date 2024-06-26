@@ -24,7 +24,6 @@ pub struct LinearTimeOram<DB> {
     pub physical_memory: DB,
 }
 
-// impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram<DB> {
 impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB>
 where
     Standard: Distribution<V>,
