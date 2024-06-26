@@ -18,7 +18,7 @@ use duplicate::duplicate_item;
 
 use crate::{
     linear_time_oram::ConcreteLinearTimeOram,
-    simple_insecure_path_oram::ConcreteSimpleInsecurePathOram, Address, CountAccessesDatabase,
+    path_oram::simple_insecure_path_oram::ConcreteSimpleInsecurePathOram, Address, CountAccessesDatabase,
     Database, Oram, OramBlock, SimpleDatabase,
 };
 pub(crate) trait TestableMemory<V: OramBlock> {
