@@ -7,11 +7,14 @@
 
 //! A simple linear-time implementation of Oblivious RAM.
 
-use rand::{CryptoRng, RngCore};
+use rand::{
+    distributions::{Distribution, Standard},
+    CryptoRng, RngCore,
+};
 use std::ops::BitAnd;
-use subtle::{ConditionallySelectable, ConstantTimeEq, ConstantTimeLess, CtOption};
+use subtle::{ConstantTimeEq, ConstantTimeLess, CtOption};
 
-use crate::{Address, BlockSize, BlockValue, CountAccessesDatabase, Database, Oram};
+use crate::{Address, CountAccessesDatabase, Database, Oram, OramBlock};
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
@@ -21,23 +24,23 @@ pub struct LinearTimeOram<DB> {
     pub physical_memory: DB,
 }
 
-impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram<DB> {
+// impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram<DB> {
+impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB>
+where
+    Standard: Distribution<V>,
+{
     fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Self {
         Self {
             physical_memory: DB::new(block_capacity),
         }
     }
 
-    fn block_size(&self) -> BlockSize {
-        B
-    }
-
     fn access<R: RngCore + CryptoRng>(
         &mut self,
         index: Address,
-        optional_new_value: CtOption<BlockValue<B>>,
+        optional_new_value: CtOption<V>,
         _: &mut R,
-    ) -> BlockValue<B> {
+    ) -> V {
         // Note: index and optional_new_value should be considered secret for the purposes of constant-time operations.
 
         // TODO(#6): Handle malformed input in a more robust way.
@@ -49,7 +52,7 @@ impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram
         assert!(index_in_bounds);
 
         // This is a dummy value which will always be overwritten.
-        let mut result = BlockValue::default();
+        let mut result = V::default();
 
         for i in 0..self.physical_memory.capacity() {
             // Read from memory
@@ -66,14 +69,14 @@ impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram
             let oram_operation_is_write = optional_new_value.is_some();
             let should_write = is_requested_index.bitand(oram_operation_is_write);
             // Note that the unwrap_or_else method of CtOption is constant-time.
-            let value_to_write = optional_new_value.unwrap_or_else(BlockValue::default);
+            let value_to_write = optional_new_value.unwrap_or_else(V::default);
 
             // Based on whether (1) the loop counter matches the requested index,
             // AND (2) this ORAM access is a write,
             // select the value to be written back out to memory to be either the original value
             // or the provided new value.
             let potentially_updated_value =
-                BlockValue::conditional_select(&entry, &value_to_write, should_write);
+                V::conditional_select(&entry, &value_to_write, should_write);
             // End client-side processing
 
             // Write the (potentially) updated value back to memory.
@@ -88,19 +91,18 @@ impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram
 }
 
 /// A type alias for a simple `LinearTimeOram` monomorphization.
-pub type ConcreteLinearTimeOram<const B: usize> =
-    LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
+pub type ConcreteLinearTimeOram<V> = LinearTimeOram<CountAccessesDatabase<V>>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         test_utils::{
-            create_correctness_test, create_correctness_tests_for_oram_type,
+            create_correctness_test_block_value, create_correctness_tests_for_oram_type,
             create_correctness_tests_for_workload_and_oram_type, test_correctness_linear_workload,
             test_correctness_random_workload,
         },
-        SimpleDatabase,
+        BlockValue, SimpleDatabase,
     };
     use std::mem;
 

@@ -38,16 +38,19 @@ pub type BucketSizeType = usize;
 /// Here we adopt the more conservative setting of 4.
 pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSizeType = 4;
 
+/// The smallest unit of memory readable/writable by the ORAM.
+pub trait OramBlock:
+    Copy + Clone + std::fmt::Debug + Default + PartialEq + ConditionallySelectable
+{
+}
+
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait Oram<const B: BlockSize> {
+pub trait Oram<V: OramBlock> {
     /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
     fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R) -> Self;
     /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> Address;
-
-    /// Returns the size in bytes of each block of this `Oram`.
-    fn block_size(&self) -> BlockSize;
 
     /// Performs a (oblivious) ORAM access.
     /// If `optional_new_value.is_some()`, writes  `optional_new_value.unwrap()` into `index`.
@@ -55,31 +58,28 @@ pub trait Oram<const B: BlockSize> {
     fn access<R: RngCore + CryptoRng>(
         &mut self,
         index: Address,
-        optional_new_value: CtOption<BlockValue<B>>,
+        optional_new_value: CtOption<V>,
         rng: &mut R,
-    ) -> BlockValue<B>;
+    ) -> V;
 
     /// Obliviously reads the value stored at `index`.
-    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, rng: &mut R) -> BlockValue<B> {
-        let ct_none = CtOption::new(BlockValue::default(), 0.into());
+    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, rng: &mut R) -> V {
+        let ct_none = CtOption::new(V::default(), 0.into());
         self.access(index, ct_none, rng)
     }
 
     /// Obliviously writes the value stored at `index`.
-    fn write<R: RngCore + CryptoRng>(
-        &mut self,
-        index: Address,
-        new_value: BlockValue<B>,
-        rng: &mut R,
-    ) {
+    fn write<R: RngCore + CryptoRng>(&mut self, index: Address, new_value: V, rng: &mut R) {
         let ct_some_new_value = CtOption::new(new_value, 1.into());
         self.access(index, ct_some_new_value, rng);
     }
 }
 
-/// The smallest unit of memory readable/writable by the ORAM.
+/// An `OramBlock` consisting of unstructured bytes.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlockValue<const B: BlockSize>(Aligned<A64, [u8; B]>);
+
+impl<const B: BlockSize> OramBlock for BlockValue<B> {}
 
 impl<const B: BlockSize> BlockValue<B> {
     /// Returns the length in bytes of this `BlockValue`.

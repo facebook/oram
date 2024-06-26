@@ -12,7 +12,7 @@ use core::fmt;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::fmt::Display;
 
-use oram::{Address, BlockValue, Oram};
+use oram::{Address, BlockSize, BlockValue, Oram, OramBlock};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use oram::linear_time_oram::ConcreteLinearTimeOram;
@@ -29,7 +29,7 @@ trait Instrumented {
     fn short_name() -> String;
 }
 
-impl<const B: usize> Instrumented for ConcreteLinearTimeOram<B> {
+impl<V: OramBlock> Instrumented for ConcreteLinearTimeOram<V> {
     fn get_read_count(&self) -> u128 {
         return self.physical_memory.get_read_count();
     }
@@ -43,7 +43,7 @@ impl<const B: usize> Instrumented for ConcreteLinearTimeOram<B> {
     }
 }
 
-impl<const B: usize> Instrumented for ConcreteSimpleInsecurePathOram<B> {
+impl<V: OramBlock> Instrumented for ConcreteSimpleInsecurePathOram<V> {
     fn get_read_count(&self) -> u128 {
         return self.physical_memory.get_read_count();
     }
@@ -57,49 +57,53 @@ impl<const B: usize> Instrumented for ConcreteSimpleInsecurePathOram<B> {
     }
 }
 
+type BenchmarkLinearTimeOram<const B: usize> = ConcreteLinearTimeOram<BlockValue<B>>;
+type BenchmarkSimpleInsecurePathOram<const B: usize> =
+    ConcreteSimpleInsecurePathOram<BlockValue<B>>;
+
 // Here, all benchmarks are run for linear and path ORAMs, and block sizes of 64 and 4096.
 criterion_group!(
     benches,
-    benchmark_initialization::<64, ConcreteLinearTimeOram<64>>,
-    benchmark_initialization::<4096, ConcreteLinearTimeOram<4096>>,
-    benchmark_read::<64, ConcreteLinearTimeOram<64>>,
-    benchmark_read::<4096, ConcreteLinearTimeOram<4096>>,
-    benchmark_write::<64, ConcreteLinearTimeOram<64>>,
-    benchmark_write::<4096, ConcreteLinearTimeOram<4096>>,
-    benchmark_random_operations::<64, ConcreteLinearTimeOram<64>>,
-    benchmark_random_operations::<4096, ConcreteLinearTimeOram<4096>>,
-    print_read_header::<ConcreteLinearTimeOram<0>>,
-    count_accesses_on_read::<64, ConcreteLinearTimeOram<64>>,
-    count_accesses_on_read::<4096, ConcreteLinearTimeOram<4096>>,
-    print_write_header::<ConcreteLinearTimeOram<0>>,
-    count_accesses_on_write::<64, ConcreteLinearTimeOram<64>>,
-    count_accesses_on_write::<4096, ConcreteLinearTimeOram<4096>>,
-    print_random_operations_header::<ConcreteLinearTimeOram<0>>,
-    count_accesses_on_random_workload::<64, ConcreteLinearTimeOram<64>>,
-    count_accesses_on_random_workload::<4096, ConcreteLinearTimeOram<4096>>,
-    benchmark_initialization::<64, ConcreteSimpleInsecurePathOram<64>>,
-    benchmark_initialization::<4096, ConcreteSimpleInsecurePathOram<4096>>,
-    benchmark_read::<64, ConcreteSimpleInsecurePathOram<64>>,
-    benchmark_read::<4096, ConcreteSimpleInsecurePathOram<4096>>,
-    benchmark_write::<64, ConcreteSimpleInsecurePathOram<64>>,
-    benchmark_write::<4096, ConcreteSimpleInsecurePathOram<4096>>,
-    benchmark_random_operations::<64, ConcreteSimpleInsecurePathOram<64>>,
-    benchmark_random_operations::<4096, ConcreteSimpleInsecurePathOram<4096>>,
-    print_read_header::<ConcreteSimpleInsecurePathOram<0>>,
-    count_accesses_on_read::<64, ConcreteSimpleInsecurePathOram<64>>,
-    count_accesses_on_read::<4096, ConcreteSimpleInsecurePathOram<4096>>,
-    print_write_header::<ConcreteSimpleInsecurePathOram<0>>,
-    count_accesses_on_write::<64, ConcreteSimpleInsecurePathOram<64>>,
-    count_accesses_on_write::<4096, ConcreteSimpleInsecurePathOram<4096>>,
-    print_random_operations_header::<ConcreteSimpleInsecurePathOram<0>>,
-    count_accesses_on_random_workload::<64, ConcreteSimpleInsecurePathOram<64>>,
-    count_accesses_on_random_workload::<4096, ConcreteSimpleInsecurePathOram<4096>>,
+    benchmark_initialization::<64, BenchmarkLinearTimeOram<64>>,
+    benchmark_initialization::<4096, BenchmarkLinearTimeOram<4096>>,
+    benchmark_read::<64, BenchmarkLinearTimeOram<64>>,
+    benchmark_read::<4096, BenchmarkLinearTimeOram<4096>>,
+    benchmark_write::<64, BenchmarkLinearTimeOram<64>>,
+    benchmark_write::<4096, BenchmarkLinearTimeOram<4096>>,
+    benchmark_random_operations::<64, BenchmarkLinearTimeOram<64>>,
+    benchmark_random_operations::<4096, BenchmarkLinearTimeOram<4096>>,
+    print_read_header::<BenchmarkLinearTimeOram<0>>,
+    count_accesses_on_read::<64, BenchmarkLinearTimeOram<64>>,
+    count_accesses_on_read::<4096, BenchmarkLinearTimeOram<4096>>,
+    print_write_header::<BenchmarkLinearTimeOram<0>>,
+    count_accesses_on_write::<64, BenchmarkLinearTimeOram<64>>,
+    count_accesses_on_write::<4096, BenchmarkLinearTimeOram<4096>>,
+    print_random_operations_header::<BenchmarkLinearTimeOram<0>>,
+    count_accesses_on_random_workload::<64, BenchmarkLinearTimeOram<64>>,
+    count_accesses_on_random_workload::<4096, BenchmarkLinearTimeOram<4096>>,
+    benchmark_initialization::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    benchmark_initialization::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    benchmark_read::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    benchmark_read::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    benchmark_write::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    benchmark_write::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    benchmark_random_operations::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    benchmark_random_operations::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    print_read_header::<BenchmarkSimpleInsecurePathOram<0>>,
+    count_accesses_on_read::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    count_accesses_on_read::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    print_write_header::<BenchmarkSimpleInsecurePathOram<0>>,
+    count_accesses_on_write::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    count_accesses_on_write::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    print_random_operations_header::<BenchmarkSimpleInsecurePathOram<0>>,
+    count_accesses_on_random_workload::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    count_accesses_on_random_workload::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
 );
 criterion_main!(benches);
 
 fn count_accesses_on_operation<
-    const B: usize,
-    T: Oram<B> + Instrumented,
+    const B: BlockSize,
+    T: Oram<BlockValue<B>> + Instrumented,
     F: Fn(&mut T, &mut StdRng, usize) -> (),
 >(
     operation: F,
@@ -124,19 +128,25 @@ fn count_accesses_on_operation<
     }
 }
 
-fn count_accesses_on_read<const B: usize, T: Oram<B> + Instrumented>(_: &mut Criterion) {
+fn count_accesses_on_read<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
+    _: &mut Criterion,
+) {
     count_accesses_on_operation(|oram: &mut T, rng, _capacity| {
         oram.read(0, rng);
     });
 }
 
-fn count_accesses_on_write<const B: usize, T: Oram<B> + Instrumented>(_: &mut Criterion) {
+fn count_accesses_on_write<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
+    _: &mut Criterion,
+) {
     count_accesses_on_operation(|oram: &mut T, rng: &mut StdRng, _capacity| {
         oram.write(0, BlockValue::default(), rng);
     });
 }
 
-fn count_accesses_on_random_workload<const B: usize, T: Oram<B> + Instrumented>(_: &mut Criterion) {
+fn count_accesses_on_random_workload<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
+    _: &mut Criterion,
+) {
     count_accesses_on_operation(|oram: &mut T, rng, capacity| {
         let number_of_operations_to_run = 64usize;
 
@@ -160,7 +170,9 @@ fn count_accesses_on_random_workload<const B: usize, T: Oram<B> + Instrumented>(
     });
 }
 
-fn benchmark_initialization<const B: usize, T: Oram<B> + Instrumented>(c: &mut Criterion) {
+fn benchmark_initialization<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
+    c: &mut Criterion,
+) {
     let mut group = c.benchmark_group(T::short_name() + "::initialization");
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
@@ -175,7 +187,7 @@ fn benchmark_initialization<const B: usize, T: Oram<B> + Instrumented>(c: &mut C
     }
 }
 
-fn benchmark_read<const B: usize, T: Oram<B> + Instrumented>(c: &mut Criterion) {
+fn benchmark_read<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(c: &mut Criterion) {
     let mut group = c.benchmark_group(T::short_name() + "::read");
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
@@ -190,7 +202,7 @@ fn benchmark_read<const B: usize, T: Oram<B> + Instrumented>(c: &mut Criterion) 
     }
 }
 
-fn benchmark_write<const B: usize, T: Oram<B> + Instrumented>(c: &mut Criterion) {
+fn benchmark_write<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(c: &mut Criterion) {
     let mut group = c.benchmark_group(T::short_name() + "::write");
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
@@ -205,7 +217,9 @@ fn benchmark_write<const B: usize, T: Oram<B> + Instrumented>(c: &mut Criterion)
     }
 }
 
-fn benchmark_random_operations<const B: usize, T: Oram<B> + Instrumented>(c: &mut Criterion) {
+fn benchmark_random_operations<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
+    c: &mut Criterion,
+) {
     let mut group = c.benchmark_group(T::short_name() + "::random_operations");
     let mut rng = StdRng::seed_from_u64(0);
 
@@ -214,7 +228,7 @@ fn benchmark_random_operations<const B: usize, T: Oram<B> + Instrumented>(c: &mu
 
         let number_of_operations_to_run = 64 as usize;
 
-        let block_size = oram.block_size();
+        let block_size = B;
         let capacity: usize = oram.block_capacity();
         let parameters = &RandomOperationsParameters {
             capacity,
@@ -251,7 +265,7 @@ fn benchmark_random_operations<const B: usize, T: Oram<B> + Instrumented>(c: &mu
     group.finish();
 }
 
-fn run_many_random_accesses<const B: usize, T: Oram<B>>(
+fn run_many_random_accesses<const B: usize, T: Oram<BlockValue<B>>>(
     oram: &mut T,
     number_of_operations_to_run: usize,
     index_randomness: &[Address],
@@ -266,7 +280,7 @@ fn run_many_random_accesses<const B: usize, T: Oram<B>>(
         if random_read_versus_write {
             oram.read(random_index, &mut rng);
         } else {
-            let block_size = oram.block_size();
+            let block_size = B;
             let start_index = block_size * random_index;
             let end_index = block_size * (random_index + 1);
             let random_bytes: [u8; B] =
