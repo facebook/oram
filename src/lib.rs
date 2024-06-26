@@ -47,7 +47,7 @@ pub trait OramBlock:
 /// Represents an oblivious RAM (ORAM) mapping `IndexType` addresses to `BlockValue` values.
 /// `B` represents the size of each block of the ORAM in bytes.
 pub trait Oram<V: OramBlock> {
-    /// Returns a new ORAM mapping addresses `0 <= address <= block_capacity` to default `BlockValue` values.
+    /// Returns a new ORAM mapping addresses `0 <= address < block_capacity` to default `BlockValue` values.
     fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R) -> Self;
     /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> Address;
@@ -201,4 +201,14 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
     fn capacity(&self) -> Address {
         self.data.capacity()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{BlockValue, CountAccessesDatabase, SimpleDatabase};
+
+    use crate::test_utils::*;
+
+    create_correctness_tests_for_oram_type!(SimpleDatabase);
+    create_correctness_tests_for_oram_type!(CountAccessesDatabase);
 }
