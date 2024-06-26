@@ -18,8 +18,8 @@ use duplicate::duplicate_item;
 
 use crate::{
     linear_time_oram::ConcreteLinearTimeOram,
-    path_oram::simple_insecure_path_oram::ConcreteSimpleInsecurePathOram, Address, CountAccessesDatabase,
-    Database, Oram, OramBlock, SimpleDatabase,
+    path_oram::simple_insecure_path_oram::ConcreteSimpleInsecurePathOram, Address,
+    CountAccessesDatabase, Database, Oram, OramBlock, SimpleDatabase,
 };
 pub(crate) trait TestableMemory<V: OramBlock> {
     fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R) -> Self;
