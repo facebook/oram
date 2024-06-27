@@ -17,7 +17,7 @@ use rand::{
 use subtle::{Choice, ConditionallySelectable, CtOption};
 
 pub mod linear_time_oram;
-pub mod simple_insecure_path_oram;
+pub mod path_oram;
 
 #[cfg(test)]
 mod test_utils;
