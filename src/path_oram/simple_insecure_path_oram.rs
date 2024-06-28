@@ -13,7 +13,7 @@ use crate::{
 };
 use rand::{seq::SliceRandom, CryptoRng, Rng, RngCore};
 use std::ops::BitAnd;
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use super::{Bucket, CompleteBinaryTreeIndex, PathOramBlock};
 
@@ -38,10 +38,10 @@ pub struct SimpleInsecurePathOram<V: OramBlock, const Z: BucketSizeType> {
 }
 
 impl<V: OramBlock, const Z: BucketSizeType> Oram<V> for SimpleInsecurePathOram<V, Z> {
-    fn access<R: Rng + CryptoRng>(
+    fn access<R: Rng + CryptoRng, F: Fn(&V) -> V>(
         &mut self,
         address: Address,
-        optional_new_value: subtle::CtOption<V>,
+        callback: F,
         rng: &mut R,
     ) -> V {
         let position = self.position_map.read(address);
@@ -52,7 +52,7 @@ impl<V: OramBlock, const Z: BucketSizeType> Oram<V> for SimpleInsecurePathOram<V
 
         // LEAK: The next three lines leak information
         // about the state of the stash at the end of the access.
-        let result = self.access_stash(address, optional_new_value, new_position);
+        let result = self.access_stash(address, callback, new_position);
 
         self.write_path(position);
 
@@ -133,14 +133,12 @@ impl<V: OramBlock, const Z: BucketSizeType> SimpleInsecurePathOram<V, Z> {
         }
     }
 
-    fn access_stash(
+    fn access_stash<F: Fn(&V) -> V>(
         &mut self,
         address: Address,
-        optional_new_value: CtOption<V>,
+        callback: F,
         new_position: TreeIndex,
     ) -> V {
-        let value_to_write = optional_new_value.unwrap_or_else(V::default);
-        let oram_operation_is_write = optional_new_value.is_some();
         let mut result: V = V::default();
 
         // LEAK: The time taken by this loop leaks the size of the stash
@@ -155,11 +153,11 @@ impl<V: OramBlock, const Z: BucketSizeType> SimpleInsecurePathOram<V, Z> {
                 .position
                 .conditional_assign(&new_position, is_requested_index);
 
-            let should_write = is_requested_index.bitand(oram_operation_is_write);
-            // Write new value and position into target block in case of write
+            let value_to_write = callback(&result);
+
             block
                 .value
-                .conditional_assign(&value_to_write, should_write);
+                .conditional_assign(&value_to_write, is_requested_index);
         }
         result
     }
