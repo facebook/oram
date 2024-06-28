@@ -12,7 +12,6 @@ use rand::{
     CryptoRng, RngCore,
 };
 
-use std::ops::BitAnd;
 use subtle::{ConstantTimeEq, ConstantTimeLess};
 
 use crate::{Address, CountAccessesDatabase, Database, Oram, OramBlock};
