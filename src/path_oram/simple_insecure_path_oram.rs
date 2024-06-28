@@ -139,8 +139,6 @@ impl<V: OramBlock, const Z: BucketSizeType> SimpleInsecurePathOram<V, Z> {
         callback: F,
         new_position: TreeIndex,
     ) -> V {
-        // let value_to_write = optional_new_value.unwrap_or_else(V::default);
-        // let oram_operation_is_write = optional_new_value.is_some();
         let mut result: V = V::default();
 
         // LEAK: The time taken by this loop leaks the size of the stash

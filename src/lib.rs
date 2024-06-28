@@ -207,11 +207,7 @@ impl<V: Default + Copy> Database<V> for CountAccessesDatabase<V> {
 mod tests {
     use crate::{BlockValue, CountAccessesDatabase, SimpleDatabase};
 
-    use crate::test_utils::{
-        create_correctness_test_block_value, create_correctness_tests_for_oram_type,
-        create_correctness_tests_for_workload_and_oram_type, test_correctness_linear_workload,
-        test_correctness_random_workload,
-    };
+    use crate::test_utils::*;
 
     create_correctness_tests_for_oram_type!(SimpleDatabase);
     create_correctness_tests_for_oram_type!(CountAccessesDatabase);

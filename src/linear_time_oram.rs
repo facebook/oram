@@ -11,6 +11,8 @@ use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
 };
+
+use std::ops::BitAnd;
 use subtle::{ConstantTimeEq, ConstantTimeLess};
 
 use crate::{Address, CountAccessesDatabase, Database, Oram, OramBlock};
@@ -24,7 +26,6 @@ pub struct LinearTimeOram<DB> {
     pub physical_memory: DB,
 }
 
-// impl<const B: BlockSize, DB: Database<BlockValue<B>>> Oram<B> for LinearTimeOram<DB> {
 impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB>
 where
     Standard: Distribution<V>,
