@@ -7,11 +7,9 @@
 
 //! A Path ORAM bucket.
 
-use subtle::{Choice, ConditionallySelectable};
-
-use crate::{BucketSize, OramBlock};
-
 use super::path_oram_block::PathOramBlock;
+use crate::{BucketSize, OramBlock};
+use subtle::{Choice, ConditionallySelectable};
 
 #[repr(align(4096))]
 #[derive(Clone, Copy, Debug, PartialEq)]

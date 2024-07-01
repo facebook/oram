@@ -7,12 +7,10 @@
 
 //! A simple linear-time implementation of Oblivious RAM.
 
+use crate::database::Database;
+use crate::{Address, Oram, OramBlock};
 use rand::{CryptoRng, RngCore};
 use subtle::{ConstantTimeEq, ConstantTimeLess};
-
-use crate::{Address, Oram, OramBlock};
-
-use crate::database::Database;
 
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.

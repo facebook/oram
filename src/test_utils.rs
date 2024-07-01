@@ -8,32 +8,30 @@
 //! This module contains common test utilities for crates generating tests utilizing the
 //! `oram` crate.
 
-use std::{fmt::Debug, fs::File};
-
-use std::sync::Once;
-static INIT: Once = Once::new();
-
+use crate::database::{CountAccessesDatabase, Database};
+use crate::path_oram::bucket::Bucket;
+use crate::path_oram::simple_insecure_path_oram::VecPathOram;
+use crate::path_oram::TreeIndex;
+use crate::{BucketSize, Oram, OramBlock};
 use rand::{
     distributions::{Distribution, Standard},
     rngs::StdRng,
     Rng, SeedableRng,
 };
 use simplelog::{Config, WriteLogger};
+use std::fmt::Debug;
+use std::sync::Once;
 
-use crate::database::{CountAccessesDatabase, Database};
-use crate::path_oram::bucket::Bucket;
-use crate::path_oram::simple_insecure_path_oram::VecPathOram;
-use crate::path_oram::TreeIndex;
-use crate::{BucketSize, Oram, OramBlock};
+static INIT: Once = Once::new();
 
 // For use in manual testing and inspection.
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn init_logger() {
     INIT.call_once(|| {
         WriteLogger::init(
-            log::LevelFilter::Debug,
+            log::LevelFilter::Info,
             Config::default(),
-            File::create("oram.log").unwrap(),
+            std::io::stdout(),
         )
         .unwrap()
     })
@@ -46,6 +44,7 @@ pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V>>(
 ) where
     Standard: Distribution<V>,
 {
+    init_logger();
     let mut rng = StdRng::seed_from_u64(0);
 
     let mut oram = T::new(capacity, &mut rng);
@@ -80,6 +79,7 @@ pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Debug>
 ) where
     Standard: Distribution<V>,
 {
+    init_logger();
     let mut rng = StdRng::seed_from_u64(0);
 
     let mut oram = T::new(capacity, &mut rng);

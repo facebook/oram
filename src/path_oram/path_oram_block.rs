@@ -7,9 +7,8 @@
 
 //! A Path ORAM block.
 
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
-
 use crate::{path_oram::TreeIndex, Address, OramBlock};
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 impl OramBlock for TreeIndex {}
 

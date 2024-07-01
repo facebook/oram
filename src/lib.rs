@@ -11,7 +11,6 @@
 
 use rand::{CryptoRng, RngCore};
 use subtle::ConditionallySelectable;
-
 pub mod block_value;
 pub mod database;
 pub mod linear_time_oram;

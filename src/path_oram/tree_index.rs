@@ -7,11 +7,9 @@
 
 //! Tree index
 
-use std::mem::size_of;
-
+use crate::path_oram::{TreeHeight, TreeIndex};
 use rand::{CryptoRng, Rng, RngCore};
-
-use super::{TreeHeight, TreeIndex};
+use std::mem::size_of;
 
 pub trait CompleteBinaryTreeIndex {
     fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self;

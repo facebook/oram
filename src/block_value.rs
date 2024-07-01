@@ -7,15 +7,13 @@
 
 //! Blocks
 
+use crate::BlockSize;
+use crate::OramBlock;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use subtle::{Choice, ConditionallySelectable};
-
-use crate::OramBlock;
-
-use super::BlockSize;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(align(64))]

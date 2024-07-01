@@ -7,18 +7,15 @@
 
 //! An insecure implementation of Path ORAM with "client-side" stash and recursive position map.
 
+use super::simple_insecure_path_oram::VecPathOram;
+use super::{address_oram_block::AddressOramBlock, TreeIndex};
 use crate::{
     database::SimpleDatabase, linear_time_oram::LinearTimeOram, Address, BlockSize, BucketSize,
     Oram, OramBlock,
 };
-
-use super::{address_oram_block::AddressOramBlock, TreeIndex};
-
 use log::debug;
 use rand::{CryptoRng, RngCore};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
-
-use super::simple_insecure_path_oram::VecPathOram;
 
 /// A Path ORAM with a recursive position map and "client-side" stash.
 pub type BlockOram<const AB: BlockSize, V, const Z: BucketSize> =
@@ -161,80 +158,72 @@ impl<const B: BlockSize, const Z: BucketSize> Oram<TreeIndex> for AddressOram<B,
 }
 
 #[cfg(test)]
-mod tests {
+mod address_oram_tests {
+    use crate::block_value::BlockValue;
+    use crate::path_oram::recursive_insecure_path_oram::*;
+    use crate::path_oram::*;
+    use crate::test_utils::*;
+    use core::iter::zip;
 
-    mod address_oram_tests {
-        use core::iter::zip;
+    type ConcreteAddressOram<const AB: BlockSize, V> =
+        VecPathOram<V, DEFAULT_BLOCKS_PER_BUCKET, AddressOram<AB, DEFAULT_BLOCKS_PER_BUCKET>>;
 
-        use super::super::*;
-        use crate::block_value::BlockValue;
-        use crate::path_oram::*;
-        use crate::test_utils::*;
+    create_correctness_tests_for_oram_type!(ConcreteAddressOram, AddressOramBlock);
 
-        type ConcreteAddressOram<const AB: BlockSize, V> =
-            VecPathOram<V, DEFAULT_BLOCKS_PER_BUCKET, AddressOram<AB, DEFAULT_BLOCKS_PER_BUCKET>>;
+    // Test that the stash size is not growing too large.
+    type CAOStashSizeMonitor<const AB: BlockSize, V> = StashSizeMonitor<ConcreteAddressOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(CAOStashSizeMonitor, AddressOramBlock);
 
-        create_correctness_tests_for_oram_type!(ConcreteAddressOram, AddressOramBlock);
+    // Test that the total number of non-dummy blocks in the ORAM stays constant.
+    type CAOConstantOccupancyMonitor<const AB: BlockSize, V> =
+        ConstantOccupancyMonitor<ConcreteAddressOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(CAOConstantOccupancyMonitor, AddressOramBlock);
 
-        // Test that the stash size is not growing too large.
-        type CAOStashSizeMonitor<const AB: BlockSize, V> =
-            StashSizeMonitor<ConcreteAddressOram<AB, V>>;
-        create_correctness_tests_for_oram_type!(CAOStashSizeMonitor, AddressOramBlock);
+    // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
+    type CAOPhysicalAccessCountMonitor<const AB: BlockSize, V> =
+        PhysicalAccessCountMonitor<ConcreteAddressOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(CAOPhysicalAccessCountMonitor, AddressOramBlock);
 
-        // Test that the total number of non-dummy blocks in the ORAM stays constant.
-        type CAOConstantOccupancyMonitor<const AB: BlockSize, V> =
-            ConstantOccupancyMonitor<ConcreteAddressOram<AB, V>>;
-        create_correctness_tests_for_oram_type!(CAOConstantOccupancyMonitor, AddressOramBlock);
-
-        // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
-        type CAOPhysicalAccessCountMonitor<const AB: BlockSize, V> =
-            PhysicalAccessCountMonitor<ConcreteAddressOram<AB, V>>;
-        create_correctness_tests_for_oram_type!(CAOPhysicalAccessCountMonitor, AddressOramBlock);
-
-        // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
-        #[derive(Debug)]
-        struct CAOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
-            oram: ConcreteAddressOram<B, V>,
-        }
-        create_statistics_test_for_oram_type!(CAOAccessDistributionTester, BlockValue);
+    // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
+    #[derive(Debug)]
+    struct CAOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
+        oram: ConcreteAddressOram<B, V>,
     }
+    create_statistics_test_for_oram_type!(CAOAccessDistributionTester, BlockValue);
+}
 
-    mod block_oram_tests {
-        mod address_oram_tests {
-            use core::iter::zip;
+#[cfg(test)]
+mod block_oram_tests {
+    use core::iter::zip;
 
-            use crate::block_value::BlockValue;
-            use crate::path_oram::*;
-            use crate::test_utils::*;
-            use crate::*;
-            use recursive_insecure_path_oram::*;
+    use crate::block_value::BlockValue;
+    use crate::path_oram::*;
+    use crate::test_utils::*;
+    use crate::*;
+    use recursive_insecure_path_oram::*;
 
-            type ConcreteBlockOram<const B: BlockSize, V> =
-                BlockOram<B, V, DEFAULT_BLOCKS_PER_BUCKET>;
+    type ConcreteBlockOram<const B: BlockSize, V> = BlockOram<B, V, DEFAULT_BLOCKS_PER_BUCKET>;
 
-            create_correctness_tests_for_oram_type!(ConcreteBlockOram, BlockValue);
+    create_correctness_tests_for_oram_type!(ConcreteBlockOram, BlockValue);
 
-            // Test that the stash size is not growing too large.
-            type CBOStashSizeMonitor<const AB: BlockSize, V> =
-                StashSizeMonitor<ConcreteBlockOram<AB, V>>;
-            create_correctness_tests_for_oram_type!(CBOStashSizeMonitor, BlockValue);
+    // Test that the stash size is not growing too large.
+    type CBOStashSizeMonitor<const AB: BlockSize, V> = StashSizeMonitor<ConcreteBlockOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(CBOStashSizeMonitor, BlockValue);
 
-            // Test that the total number of non-dummy blocks in the ORAM stays constant.
-            type CBOConstantOccupancyMonitor<const AB: BlockSize, V> =
-                ConstantOccupancyMonitor<ConcreteBlockOram<AB, V>>;
-            create_correctness_tests_for_oram_type!(CBOConstantOccupancyMonitor, BlockValue);
+    // Test that the total number of non-dummy blocks in the ORAM stays constant.
+    type CBOConstantOccupancyMonitor<const AB: BlockSize, V> =
+        ConstantOccupancyMonitor<ConcreteBlockOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(CBOConstantOccupancyMonitor, BlockValue);
 
-            // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
-            type CBOCountPhysicalAccessesMonitor<const AB: BlockSize, V> =
-                PhysicalAccessCountMonitor<ConcreteBlockOram<AB, V>>;
-            create_correctness_tests_for_oram_type!(CBOCountPhysicalAccessesMonitor, BlockValue);
+    // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
+    type CBOCountPhysicalAccessesMonitor<const AB: BlockSize, V> =
+        PhysicalAccessCountMonitor<ConcreteBlockOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(CBOCountPhysicalAccessesMonitor, BlockValue);
 
-            // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
-            #[derive(Debug)]
-            struct CBOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
-                oram: ConcreteBlockOram<B, V>,
-            }
-            create_statistics_test_for_oram_type!(CBOAccessDistributionTester, BlockValue);
-        }
+    // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
+    #[derive(Debug)]
+    struct CBOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
+        oram: ConcreteBlockOram<B, V>,
     }
+    create_statistics_test_for_oram_type!(CBOAccessDistributionTester, BlockValue);
 }

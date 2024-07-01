@@ -7,6 +7,10 @@
 
 //! A simple, insecure implementation of Path ORAM with "client-side" stash and (non-recursive) position map.
 
+use super::{
+    bucket::Bucket, tree_index::CompleteBinaryTreeIndex, PathOramBlock, TreeHeight, TreeIndex,
+    MAXIMUM_TREE_HEIGHT,
+};
 use crate::{
     database::{CountAccessesDatabase, Database},
     Address, BucketSize, Oram, OramBlock,
@@ -14,11 +18,6 @@ use crate::{
 use rand::{seq::SliceRandom, CryptoRng, Rng, RngCore};
 use std::{mem, ops::BitAnd};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
-
-use super::{
-    bucket::Bucket, tree_index::CompleteBinaryTreeIndex, PathOramBlock, TreeHeight, TreeIndex,
-    MAXIMUM_TREE_HEIGHT,
-};
 
 /// Specialization
 pub type SimpleInsecurePathOram<V, const Z: BucketSize> =

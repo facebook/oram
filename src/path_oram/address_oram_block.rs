@@ -8,12 +8,10 @@
 //! This module contains common test utilities for crates generating tests utilizing the
 //! `oram` crate.
 
+use super::TreeIndex;
+use crate::{BlockSize, OramBlock};
 use rand::distributions::{Distribution, Standard};
 use subtle::{Choice, ConditionallySelectable};
-
-use crate::{BlockSize, OramBlock};
-
-use super::TreeIndex;
 
 #[repr(align(64))]
 #[derive(Clone, Copy, PartialEq, Debug)]

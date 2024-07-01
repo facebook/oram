@@ -9,10 +9,9 @@
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
+use crate::{Address, Oram, OramBlock};
 use duplicate::duplicate_item;
 use rand::{CryptoRng, RngCore};
-
-use crate::{Address, Oram, OramBlock};
 
 /// A simple Memory trait to model the memory controller the TEE is interacting with.
 pub trait Database<V: OramBlock> {
@@ -140,14 +139,14 @@ impl<V: OramBlock> Oram<V> for database_type<V> {
 
 #[cfg(test)]
 mod tests {
-    use std::mem;
-
     use super::{CountAccessesDatabase, Database, SimpleDatabase};
-
     use crate::{block_value::BlockValue, test_utils::*, BlockSize};
+    use std::mem;
 
     #[test]
     fn check_alignment() {
+        init_logger();
+
         let irrelevant_capacity = 64;
         let expected_alignment = 64;
         let database =
