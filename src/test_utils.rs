@@ -28,12 +28,7 @@ static INIT: Once = Once::new();
 #[cfg(test)]
 pub(crate) fn init_logger() {
     INIT.call_once(|| {
-        WriteLogger::init(
-            log::LevelFilter::Info,
-            Config::default(),
-            std::io::stdout(),
-        )
-        .unwrap()
+        WriteLogger::init(log::LevelFilter::Info, Config::default(), std::io::stdout()).unwrap()
     })
 }
 
