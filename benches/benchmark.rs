@@ -10,15 +10,19 @@
 extern crate criterion;
 use core::fmt;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use oram::database::CountAccessesDatabase;
+use oram::path_oram::DEFAULT_BLOCKS_PER_BUCKET;
 use std::fmt::Display;
+use std::time::Duration;
 
-use oram::{Address, BlockSize, BlockValue, Oram, OramBlock};
+use oram::{block_value::BlockValue, BlockSize};
+use oram::{Address, Oram};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use oram::linear_time_oram::ConcreteLinearTimeOram;
-use oram::path_oram::simple_insecure_path_oram::ConcreteSimpleInsecurePathOram;
+use oram::linear_time_oram::LinearTimeOram;
+use oram::path_oram::simple_insecure_path_oram::SimpleInsecurePathOram;
 
-const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
+const CAPACITIES_TO_BENCHMARK: [usize; 3] = [64, 256, 16_384];
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
 
 // All benchmarks are run for block sizes of 64 and 4096.
@@ -29,7 +33,11 @@ trait Instrumented {
     fn short_name() -> String;
 }
 
-impl<V: OramBlock> Instrumented for ConcreteLinearTimeOram<V> {
+type BenchmarkLinearTimeOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
+type BenchmarkSimpleInsecurePathOram<const B: usize> =
+    SimpleInsecurePathOram<BlockValue<B>, DEFAULT_BLOCKS_PER_BUCKET>;
+
+impl<const B: BlockSize> Instrumented for BenchmarkLinearTimeOram<B> {
     fn get_read_count(&self) -> u128 {
         return self.physical_memory.get_read_count();
     }
@@ -43,7 +51,7 @@ impl<V: OramBlock> Instrumented for ConcreteLinearTimeOram<V> {
     }
 }
 
-impl<V: OramBlock> Instrumented for ConcreteSimpleInsecurePathOram<V> {
+impl<const B: BlockSize> Instrumented for BenchmarkSimpleInsecurePathOram<B> {
     fn get_read_count(&self) -> u128 {
         return self.physical_memory.get_read_count();
     }
@@ -57,13 +65,11 @@ impl<V: OramBlock> Instrumented for ConcreteSimpleInsecurePathOram<V> {
     }
 }
 
-type BenchmarkLinearTimeOram<const B: usize> = ConcreteLinearTimeOram<BlockValue<B>>;
-type BenchmarkSimpleInsecurePathOram<const B: usize> =
-    ConcreteSimpleInsecurePathOram<BlockValue<B>>;
-
 // Here, all benchmarks are run for linear and path ORAMs, and block sizes of 64 and 4096.
 criterion_group!(
-    benches,
+    name = benches;
+    config = Criterion::default().warm_up_time(Duration::new(0, 1_000_000_00)).measurement_time(Duration::new(0, 1_000_000_00)).sample_size(10);
+    targets =
     benchmark_initialization::<64, BenchmarkLinearTimeOram<64>>,
     benchmark_initialization::<4096, BenchmarkLinearTimeOram<4096>>,
     benchmark_read::<64, BenchmarkLinearTimeOram<64>>,
@@ -72,6 +78,14 @@ criterion_group!(
     benchmark_write::<4096, BenchmarkLinearTimeOram<4096>>,
     benchmark_random_operations::<64, BenchmarkLinearTimeOram<64>>,
     benchmark_random_operations::<4096, BenchmarkLinearTimeOram<4096>>,
+    benchmark_initialization::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    benchmark_initialization::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    benchmark_read::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    benchmark_read::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    benchmark_write::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    benchmark_write::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    benchmark_random_operations::<64, BenchmarkSimpleInsecurePathOram<64>>,
+    benchmark_random_operations::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
     print_read_header::<BenchmarkLinearTimeOram<0>>,
     count_accesses_on_read::<64, BenchmarkLinearTimeOram<64>>,
     count_accesses_on_read::<4096, BenchmarkLinearTimeOram<4096>>,
@@ -81,14 +95,6 @@ criterion_group!(
     print_random_operations_header::<BenchmarkLinearTimeOram<0>>,
     count_accesses_on_random_workload::<64, BenchmarkLinearTimeOram<64>>,
     count_accesses_on_random_workload::<4096, BenchmarkLinearTimeOram<4096>>,
-    benchmark_initialization::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    benchmark_initialization::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
-    benchmark_read::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    benchmark_read::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
-    benchmark_write::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    benchmark_write::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
-    benchmark_random_operations::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    benchmark_random_operations::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
     print_read_header::<BenchmarkSimpleInsecurePathOram<0>>,
     count_accesses_on_read::<64, BenchmarkSimpleInsecurePathOram<64>>,
     count_accesses_on_read::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
@@ -97,7 +103,7 @@ criterion_group!(
     count_accesses_on_write::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
     print_random_operations_header::<BenchmarkSimpleInsecurePathOram<0>>,
     count_accesses_on_random_workload::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    count_accesses_on_random_workload::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    count_accesses_on_random_workload::<4096, BenchmarkSimpleInsecurePathOram<4096>>
 );
 criterion_main!(benches);
 
@@ -115,7 +121,6 @@ fn count_accesses_on_operation<
         let read_count_before = oram.get_read_count();
         let write_count_before = oram.get_write_count();
 
-        // oram.read(black_box(0), &mut rng);
         operation(&mut oram, &mut rng, capacity);
 
         let read_count_after = oram.get_read_count();
@@ -285,11 +290,7 @@ fn run_many_random_accesses<const B: usize, T: Oram<BlockValue<B>>>(
             let end_index = block_size * (random_index + 1);
             let random_bytes: [u8; B] =
                 value_randomness[start_index..end_index].try_into().unwrap();
-            oram.write(
-                random_index,
-                BlockValue::from_byte_array(random_bytes),
-                &mut rng,
-            );
+            oram.write(random_index, BlockValue::new(random_bytes), &mut rng);
         }
     }
 
