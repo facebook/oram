@@ -7,7 +7,7 @@
 
 //! Blocks
 
-use crate::BlockSize;
+use super::BlockSize;
 use crate::OramBlock;
 use rand::{
     distributions::{Distribution, Standard},

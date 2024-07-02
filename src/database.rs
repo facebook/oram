@@ -64,7 +64,6 @@ pub struct CountAccessesDatabase<V> {
 impl<V> CountAccessesDatabase<V> {
     /// Returns the total number of reads to the database.
     pub fn get_read_count(&self) -> u128 {
-        // self.read_count
         self.reads.iter().sum()
     }
 
@@ -145,8 +144,6 @@ mod tests {
 
     #[test]
     fn check_alignment() {
-        init_logger();
-
         let irrelevant_capacity = 64;
         let expected_alignment = 64;
         let database =
