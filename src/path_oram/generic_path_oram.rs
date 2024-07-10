@@ -13,7 +13,9 @@ use super::{
 };
 use crate::{
     database::{CountAccessesDatabase, Database},
-    utils::random_permutation_of_0_through_n_exclusive,
+    utils::{
+        invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
+    },
     Address, BucketSize, Oram, OramBlock,
 };
 use rand::{CryptoRng, Rng};
@@ -116,7 +118,11 @@ impl<
 
         let mut position_map = P::new(block_capacity, rng);
 
-        let permuted_addresses = random_permutation_of_0_through_n_exclusive(block_capacity, rng);
+        let slot_indices_to_addresses =
+            random_permutation_of_0_through_n_exclusive(block_capacity as u64, rng);
+        let addresses_to_slot_indices = invert_permutation_oblivious(&slot_indices_to_addresses);
+        let slot_indices_to_addresses = to_usize_vec(slot_indices_to_addresses);
+        let addresses_to_slot_indices = to_usize_vec(addresses_to_slot_indices);
 
         let first_leaf_index = 2u64.pow(height) as usize;
         let last_leaf_index = (2 * first_leaf_index) - 1;
@@ -129,19 +135,18 @@ impl<
                 let address_index = (leaf_index - first_leaf_index) * 2 + slot_index;
                 bucket_to_write.blocks[slot_index] = PathOramBlock::<V> {
                     value: V::default(),
-                    address: permuted_addresses[address_index],
+                    address: slot_indices_to_addresses[address_index],
                     position: leaf_index as TreeIndex,
                 };
-
-                position_map.write(
-                    permuted_addresses[address_index],
-                    leaf_index as TreeIndex,
-                    rng,
-                );
             }
 
             // Write the leaf bucket back to physical memory.
             physical_memory.write_db(leaf_index, bucket_to_write);
+        }
+
+        for (address, slot_index) in addresses_to_slot_indices.iter().enumerate() {
+            let leaf_index = first_leaf_index + slot_index / 2;
+            position_map.write(address, leaf_index as u64, rng);
         }
 
         Self {
