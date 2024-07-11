@@ -11,7 +11,6 @@ extern crate criterion;
 use core::fmt;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use oram::database::CountAccessesDatabase;
-use oram::path_oram::DEFAULT_BLOCKS_PER_BUCKET;
 use std::fmt::Display;
 use std::time::Duration;
 
@@ -20,9 +19,10 @@ use oram::{Address, Oram};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use oram::linear_time_oram::LinearTimeOram;
-use oram::path_oram::simple_insecure_path_oram::SimpleInsecurePathOram;
+use oram::path_oram::recursive_secure_path_oram::ConcreteObliviousBlockOram;
 
-const CAPACITIES_TO_BENCHMARK: [usize; 3] = [64, 256, 16_384];
+const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
+
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
 
 // All benchmarks are run for block sizes of 64 and 4096.
@@ -34,8 +34,23 @@ trait Instrumented {
 }
 
 type BenchmarkLinearTimeOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
-type BenchmarkSimpleInsecurePathOram<const B: usize> =
-    SimpleInsecurePathOram<BlockValue<B>, DEFAULT_BLOCKS_PER_BUCKET>;
+
+type BenchmarkRecursiveSecurePathOram<const B: usize> =
+    ConcreteObliviousBlockOram<4096, BlockValue<B>>;
+
+impl<const B: BlockSize> Instrumented for BenchmarkRecursiveSecurePathOram<B> {
+    fn get_read_count(&self) -> u128 {
+        self.physical_memory.get_read_count()
+    }
+
+    fn get_write_count(&self) -> u128 {
+        self.physical_memory.get_write_count()
+    }
+
+    fn short_name() -> String {
+        "RecursiveSecureOram".into()
+    }
+}
 
 impl<const B: BlockSize> Instrumented for BenchmarkLinearTimeOram<B> {
     fn get_read_count(&self) -> u128 {
@@ -48,20 +63,6 @@ impl<const B: BlockSize> Instrumented for BenchmarkLinearTimeOram<B> {
 
     fn short_name() -> String {
         "LinearTimeOram".into()
-    }
-}
-
-impl<const B: BlockSize> Instrumented for BenchmarkSimpleInsecurePathOram<B> {
-    fn get_read_count(&self) -> u128 {
-        return self.physical_memory.get_read_count();
-    }
-
-    fn get_write_count(&self) -> u128 {
-        return self.physical_memory.get_write_count();
-    }
-
-    fn short_name() -> String {
-        "VecPathOram".into()
     }
 }
 
@@ -78,14 +79,14 @@ criterion_group!(
     benchmark_write::<4096, BenchmarkLinearTimeOram<4096>>,
     benchmark_random_operations::<64, BenchmarkLinearTimeOram<64>>,
     benchmark_random_operations::<4096, BenchmarkLinearTimeOram<4096>>,
-    benchmark_initialization::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    benchmark_initialization::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
-    benchmark_read::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    benchmark_read::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
-    benchmark_write::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    benchmark_write::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
-    benchmark_random_operations::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    benchmark_random_operations::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
+    benchmark_initialization::<64, BenchmarkRecursiveSecurePathOram<64>>,
+    benchmark_initialization::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+    benchmark_read::<64, BenchmarkRecursiveSecurePathOram<64>>,
+    benchmark_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+    benchmark_write::<64, BenchmarkRecursiveSecurePathOram<64>>,
+    benchmark_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+    benchmark_random_operations::<64, BenchmarkRecursiveSecurePathOram<64>>,
+    benchmark_random_operations::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
     print_read_header::<BenchmarkLinearTimeOram<0>>,
     count_accesses_on_read::<64, BenchmarkLinearTimeOram<64>>,
     count_accesses_on_read::<4096, BenchmarkLinearTimeOram<4096>>,
@@ -95,15 +96,15 @@ criterion_group!(
     print_random_operations_header::<BenchmarkLinearTimeOram<0>>,
     count_accesses_on_random_workload::<64, BenchmarkLinearTimeOram<64>>,
     count_accesses_on_random_workload::<4096, BenchmarkLinearTimeOram<4096>>,
-    print_read_header::<BenchmarkSimpleInsecurePathOram<0>>,
-    count_accesses_on_read::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    count_accesses_on_read::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
-    print_write_header::<BenchmarkSimpleInsecurePathOram<0>>,
-    count_accesses_on_write::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    count_accesses_on_write::<4096, BenchmarkSimpleInsecurePathOram<4096>>,
-    print_random_operations_header::<BenchmarkSimpleInsecurePathOram<0>>,
-    count_accesses_on_random_workload::<64, BenchmarkSimpleInsecurePathOram<64>>,
-    count_accesses_on_random_workload::<4096, BenchmarkSimpleInsecurePathOram<4096>>
+    print_read_header::<BenchmarkRecursiveSecurePathOram<0>>,
+    count_accesses_on_read::<64, BenchmarkRecursiveSecurePathOram<64>>,
+    count_accesses_on_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+    print_write_header::<BenchmarkRecursiveSecurePathOram<0>>,
+    count_accesses_on_write::<64, BenchmarkRecursiveSecurePathOram<64>>,
+    count_accesses_on_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+    print_random_operations_header::<BenchmarkRecursiveSecurePathOram<0>>,
+    count_accesses_on_random_workload::<64, BenchmarkRecursiveSecurePathOram<64>>,
+    count_accesses_on_random_workload::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
 );
 criterion_main!(benches);
 

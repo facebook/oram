@@ -19,8 +19,12 @@ pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSize = 4;
 const MAXIMUM_TREE_HEIGHT: TreeHeight = 63;
 
 pub(crate) mod address_oram_block;
+pub(crate) mod bitonic_sort;
 pub(crate) mod bucket;
+pub mod generic_path_oram;
+pub mod generic_recursive_path_oram;
+pub(crate) mod oblivious_stash;
 mod path_oram_block;
-pub mod recursive_insecure_path_oram;
-pub mod simple_insecure_path_oram;
+pub mod recursive_secure_path_oram;
+pub(crate) mod stash;
 mod tree_index;

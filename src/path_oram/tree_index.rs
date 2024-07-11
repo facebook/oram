@@ -7,7 +7,7 @@
 
 //! Tree index
 
-use crate::path_oram::{TreeHeight, TreeIndex};
+use super::{TreeHeight, TreeIndex};
 use rand::{CryptoRng, Rng, RngCore};
 use std::mem::size_of;
 
@@ -16,6 +16,7 @@ pub trait CompleteBinaryTreeIndex {
     fn random_leaf<R: RngCore + CryptoRng>(tree_height: TreeHeight, rng: &mut R) -> Self;
     fn depth(&self) -> TreeHeight;
     fn is_leaf(&self, height: TreeHeight) -> bool;
+    fn common_ancestor_of_two_leaves(&self, other: Self) -> Self;
 }
 
 impl CompleteBinaryTreeIndex for TreeIndex {
@@ -40,5 +41,14 @@ impl CompleteBinaryTreeIndex for TreeIndex {
     fn is_leaf(&self, height: TreeHeight) -> bool {
         assert_ne!(*self, 0);
         self.depth() == height
+    }
+
+    fn common_ancestor_of_two_leaves(&self, other: Self) -> Self {
+        // The two inputs must be of the same height.
+        assert_eq!(self.leading_zeros(), other.leading_zeros());
+        let shared_prefix_length = (self ^ other).leading_zeros();
+        let common_ancestor = self >> (Self::BITS - shared_prefix_length);
+        assert_ne!(common_ancestor, 0);
+        common_ancestor
     }
 }

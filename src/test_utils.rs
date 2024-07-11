@@ -8,32 +8,49 @@
 //! This module contains common test utilities for crates generating tests utilizing the
 //! `oram` crate.
 
-use crate::database::{CountAccessesDatabase, Database};
+use std::fmt::Debug;
+use std::sync::Once;
+static INIT: Once = Once::new();
+use crate::database::{CountAccessesDatabase, Database, SimpleDatabase};
+use crate::linear_time_oram::LinearTimeOram;
 use crate::path_oram::bucket::Bucket;
-use crate::path_oram::simple_insecure_path_oram::VecPathOram;
+use crate::path_oram::generic_path_oram::GenericPathOram;
+use crate::path_oram::stash::Stash;
 use crate::path_oram::TreeIndex;
 use crate::{BucketSize, Oram, OramBlock};
+use duplicate::duplicate_item;
 use rand::{
     distributions::{Distribution, Standard},
     rngs::StdRng,
     Rng, SeedableRng,
 };
 use simplelog::{Config, WriteLogger};
-use std::fmt::Debug;
-use std::sync::Once;
-
-static INIT: Once = Once::new();
 
 // For use in manual testing and inspection.
-#[cfg(test)]
 pub(crate) fn init_logger() {
     INIT.call_once(|| {
         WriteLogger::init(log::LevelFilter::Info, Config::default(), std::io::stdout()).unwrap()
     })
 }
 
+pub trait Testable {
+    fn test_hook(&self) {}
+}
+
+#[duplicate_item(
+    database_type;
+    [SimpleDatabase];
+    [CountAccessesDatabase];
+)]
+impl<V: OramBlock> Testable for database_type<V> {}
+impl<DB> Testable for LinearTimeOram<DB> {}
+impl<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex>, S: Stash<V>> Testable
+    for GenericPathOram<V, Z, P, S>
+{
+}
+
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
-pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V>>(
+pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testable>(
     capacity: usize,
     num_operations: u32,
 ) where
@@ -65,10 +82,12 @@ pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V>>(
     for index in 0..capacity {
         assert_eq!(oram.read(index, &mut rng), mirror_array[index], "{index}")
     }
+
+    oram.test_hook();
 }
 
 /// Tests the correctness of an `Oram` type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
-pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Debug>(
+pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Testable + Debug>(
     capacity: usize,
     num_operations: u32,
 ) where
@@ -101,6 +120,8 @@ pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Debug>
     for index in 0..capacity {
         assert_eq!(oram.read(index, &mut rng), mirror_array[index], "{index}")
     }
+
+    oram.test_hook();
 }
 
 macro_rules! create_correctness_test_block_value {
@@ -157,7 +178,7 @@ macro_rules! monitor_boilerplate {
             rng: &mut R,
         ) -> Self {
             Self {
-                oram: VecPathOram::new(block_capacity, rng),
+                oram: GenericPathOram::new(block_capacity, rng),
             }
         }
 
@@ -189,11 +210,17 @@ pub(crate) struct StashSizeMonitor<T> {
     oram: T,
 }
 
-pub(crate) type VecStashSizeMonitor<V, const Z: BucketSize, P> =
-    StashSizeMonitor<VecPathOram<V, Z, P>>;
+impl<T> Testable for StashSizeMonitor<T> {}
 
-impl<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex> + std::fmt::Debug> Oram<V>
-    for VecStashSizeMonitor<V, Z, P>
+pub(crate) type VecStashSizeMonitor<V, const Z: BucketSize, P, S> =
+    StashSizeMonitor<GenericPathOram<V, Z, P, S>>;
+
+impl<
+        V: OramBlock,
+        const Z: BucketSize,
+        P: Oram<TreeIndex> + std::fmt::Debug,
+        S: Stash<V> + std::fmt::Debug,
+    > Oram<V> for VecStashSizeMonitor<V, Z, P, S>
 {
     monitor_boilerplate!();
 
@@ -204,7 +231,7 @@ impl<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex> + std::fmt::Debug> Or
         rng: &mut R,
     ) -> V {
         let result = self.oram.access(index, callback, rng);
-        let stash_size = self.oram.stash.len();
+        let stash_size = self.oram.stash.occupancy();
         assert!(stash_size < 10);
         result
     }
@@ -215,12 +242,17 @@ pub(crate) struct ConstantOccupancyMonitor<T> {
     oram: T,
 }
 
-pub(crate) type VecConstantOccupancyMonitor<V, const Z: BucketSize, P> =
-    ConstantOccupancyMonitor<VecPathOram<V, Z, P>>;
+impl<T> Testable for ConstantOccupancyMonitor<T> {}
 
-// impl <V: OramBlock> Oram<V> for VecConstantOccupancyMonitor<V> {
-impl<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex> + std::fmt::Debug> Oram<V>
-    for VecConstantOccupancyMonitor<V, Z, P>
+pub(crate) type VecConstantOccupancyMonitor<V, const Z: BucketSize, P, S> =
+    ConstantOccupancyMonitor<GenericPathOram<V, Z, P, S>>;
+
+impl<
+        V: OramBlock,
+        const Z: BucketSize,
+        P: Oram<TreeIndex> + std::fmt::Debug,
+        S: Stash<V> + std::fmt::Debug,
+    > Oram<V> for VecConstantOccupancyMonitor<V, Z, P, S>
 {
     monitor_boilerplate!();
 
@@ -232,12 +264,7 @@ impl<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex> + std::fmt::Debug> Or
     ) -> V {
         let result = self.oram.access(index, callback, rng);
 
-        let mut stash_occupancy = 0;
-        for block in &self.oram.stash {
-            if !block.is_dummy() {
-                stash_occupancy += 1;
-            }
-        }
+        let stash_occupancy = self.oram.stash.occupancy();
 
         let tree_occupancy = self.oram.physical_memory.tree_occupancy();
         assert_eq!(stash_occupancy + tree_occupancy, self.oram.block_capacity());
@@ -250,11 +277,17 @@ pub(crate) struct PhysicalAccessCountMonitor<T> {
     oram: T,
 }
 
-pub(crate) type VecPhysicalAccessCountMonitor<V, const Z: BucketSize, P> =
-    PhysicalAccessCountMonitor<VecPathOram<V, Z, P>>;
+impl<T> Testable for PhysicalAccessCountMonitor<T> {}
 
-impl<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex> + std::fmt::Debug> Oram<V>
-    for VecPhysicalAccessCountMonitor<V, Z, P>
+pub(crate) type VecPhysicalAccessCountMonitor<V, const Z: BucketSize, P, S> =
+    PhysicalAccessCountMonitor<GenericPathOram<V, Z, P, S>>;
+
+impl<
+        V: OramBlock,
+        const Z: BucketSize,
+        P: Oram<TreeIndex> + std::fmt::Debug,
+        S: Stash<V> + std::fmt::Debug,
+    > Oram<V> for VecPhysicalAccessCountMonitor<V, Z, P, S>
 {
     monitor_boilerplate!();
 
@@ -301,8 +334,38 @@ macro_rules! create_statistics_test_for_workload_and_oram_type {
 
 macro_rules! create_statistics_test_for_oram_type {
     ($oram_type: ident, $block_type: ident) => {
-        impl<const B: BlockSize, V: OramBlock> Drop for $oram_type<B, V> {
-            fn drop(&mut self) {
+        impl<const B: BlockSize, V: OramBlock> Oram<V> for $oram_type<B, V> {
+            fn new<R: rand::RngCore + rand::CryptoRng>(
+                block_capacity: crate::Address,
+                rng: &mut R,
+            ) -> Self {
+                let mut oram = GenericPathOram::new(block_capacity, rng);
+
+                // Avoid counting reads and writes occurring during initialization
+                for i in 0..oram.physical_memory.reads.len() {
+                    oram.physical_memory.reads[i] = 0;
+                    oram.physical_memory.writes[i] = 0;
+                }
+
+                Self { oram }
+            }
+
+            fn block_capacity(&self) -> crate::Address {
+                self.oram.block_capacity()
+            }
+
+            fn access<R: rand::RngCore + rand::CryptoRng, F: Fn(&V) -> V>(
+                &mut self,
+                index: crate::Address,
+                callback: F,
+                rng: &mut R,
+            ) -> V {
+                self.oram.access(index, callback, rng)
+            }
+        }
+
+        impl<const B: BlockSize, V: OramBlock> Testable for $oram_type<B, V> {
+            fn test_hook(&self) {
                 let reads = &self.oram.physical_memory.reads;
                 let writes: &Vec<u128> = &self.oram.physical_memory.writes;
 
@@ -331,36 +394,6 @@ macro_rules! create_statistics_test_for_oram_type {
                             < expected_reads_per_leaf + expected_reads_per_leaf / 2
                     );
                 }
-            }
-        }
-
-        impl<const B: BlockSize, V: OramBlock> Oram<V> for $oram_type<B, V> {
-            fn new<R: rand::RngCore + rand::CryptoRng>(
-                block_capacity: crate::Address,
-                rng: &mut R,
-            ) -> Self {
-                let mut oram = VecPathOram::new(block_capacity, rng);
-
-                // Avoid counting reads and writes occurring during initialization
-                for i in 0..oram.physical_memory.reads.len() {
-                    oram.physical_memory.reads[i] = 0;
-                    oram.physical_memory.writes[i] = 0;
-                }
-
-                Self { oram: oram }
-            }
-
-            fn block_capacity(&self) -> crate::Address {
-                self.oram.block_capacity()
-            }
-
-            fn access<R: rand::RngCore + rand::CryptoRng, F: Fn(&V) -> V>(
-                &mut self,
-                index: crate::Address,
-                callback: F,
-                rng: &mut R,
-            ) -> V {
-                self.oram.access(index, callback, rng)
             }
         }
 

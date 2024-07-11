@@ -64,7 +64,6 @@ pub struct CountAccessesDatabase<V> {
 impl<V> CountAccessesDatabase<V> {
     /// Returns the total number of reads to the database.
     pub fn get_read_count(&self) -> u128 {
-        // self.read_count
         self.reads.iter().sum()
     }
 
