@@ -5,10 +5,10 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! An insecure implementation of Path ORAM with "client-side" stash and recursive position map.
+//! Contains an abstract implementation of Path ORAM with a recursive position map, that is generic over its stash data structure.
 
-use super::simple_insecure_path_oram::VecPathOram;
-use super::{address_oram_block::AddressOramBlock, TreeIndex};
+use super::generic_path_oram::GenericPathOram;
+use super::{address_oram_block::AddressOramBlock, stash::Stash, TreeIndex};
 use crate::{
     database::SimpleDatabase, linear_time_oram::LinearTimeOram, Address, BlockSize, BucketSize,
     Oram, OramBlock,
@@ -17,11 +17,18 @@ use log::debug;
 use rand::{CryptoRng, RngCore};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
-/// A Path ORAM with a recursive position map and "client-side" stash.
-pub type BlockOram<const AB: BlockSize, V, const Z: BucketSize> =
-    VecPathOram<V, Z, AddressOram<AB, Z>>;
+/// A Path ORAM with a recursive position map, which is generic over its stash data structure.
+pub type BlockOram<const AB: BlockSize, V, const Z: BucketSize, S1, S2> =
+    GenericPathOram<V, Z, AddressOram<AB, Z, S1>, S2>;
 
-impl<const AB: BlockSize, V: OramBlock, const Z: BucketSize> BlockOram<AB, V, Z> {
+impl<
+        const AB: BlockSize,
+        V: OramBlock,
+        const Z: BucketSize,
+        S1: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
+        S2: Stash<V>,
+    > BlockOram<AB, V, Z, S1, S2>
+{
     pub(crate) fn recursion_height(&self) -> usize {
         self.position_map.recursion_height()
     }
@@ -29,14 +36,23 @@ impl<const AB: BlockSize, V: OramBlock, const Z: BucketSize> BlockOram<AB, V, Z>
 
 /// An `Oram` intended for use as a position map. `AB` is the block size in addresses.
 #[derive(Debug)]
-pub enum AddressOram<const AB: BlockSize, const Z: BucketSize> {
+pub enum AddressOram<
+    const AB: BlockSize,
+    const Z: BucketSize,
+    S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
+> {
     /// A simple, linear-time `AddressOram`.
     Base(LinearTimeOram<SimpleDatabase<TreeIndex>>),
-    /// A recursive `AddressOram` whose position map is a `VecPathOram`.
-    Recursive(Box<VecPathOram<AddressOramBlock<AB>, Z, AddressOram<AB, Z>>>),
+    /// A recursive `AddressOram` whose position map is also an `AddressOram`.
+    Recursive(Box<GenericPathOram<AddressOramBlock<AB>, Z, AddressOram<AB, Z, S>, S>>),
 }
 
-impl<const AB: BlockSize, const Z: BucketSize> AddressOram<AB, Z> {
+impl<
+        const AB: BlockSize,
+        const Z: BucketSize,
+        S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
+    > AddressOram<AB, Z, S>
+{
     pub(crate) fn recursion_height(&self) -> usize {
         match self {
             AddressOram::Base(_) => 0,
@@ -58,7 +74,9 @@ impl<const AB: BlockSize, const Z: BucketSize> AddressOram<AB, Z> {
     }
 }
 
-impl<const B: BlockSize, const Z: BucketSize> Oram<TreeIndex> for AddressOram<B, Z> {
+impl<const B: BlockSize, const Z: BucketSize, S: Stash<AddressOramBlock<B>> + std::fmt::Debug>
+    Oram<TreeIndex> for AddressOram<B, Z, S>
+{
     fn new<R: CryptoRng + RngCore>(number_of_addresses: Address, rng: &mut R) -> Self {
         debug!(
             "Oram::new -- AddressOram(B = {}, Z = {}, C = {})",
@@ -72,7 +90,7 @@ impl<const B: BlockSize, const Z: BucketSize> Oram<TreeIndex> for AddressOram<B,
         } else {
             assert!(number_of_addresses % B == 0);
             let block_capacity = number_of_addresses / B;
-            Self::Recursive(Box::new(VecPathOram::new(block_capacity, rng)))
+            Self::Recursive(Box::new(GenericPathOram::new(block_capacity, rng)))
         }
     }
 
@@ -83,6 +101,7 @@ impl<const B: BlockSize, const Z: BucketSize> Oram<TreeIndex> for AddressOram<B,
         }
     }
 
+    // Overwriting default method for logging purposes.
     fn read<R: RngCore + CryptoRng>(&mut self, index: Address, rng: &mut R) -> TreeIndex {
         log::debug!(
             "Level {} AddressORAM read: {}",
@@ -93,6 +112,7 @@ impl<const B: BlockSize, const Z: BucketSize> Oram<TreeIndex> for AddressOram<B,
         self.access(index, callback, rng)
     }
 
+    // Overwriting default method for logging purposes.
     /// Obliviously writes the value stored at `index`. Returns the value previously stored at `index`.
     fn write<R: RngCore + CryptoRng>(
         &mut self,
@@ -117,8 +137,8 @@ impl<const B: BlockSize, const Z: BucketSize> Oram<TreeIndex> for AddressOram<B,
     ) -> TreeIndex {
         assert!(index < self.block_capacity());
 
-        let address_of_block = AddressOram::<B, Z>::address_of_block(index);
-        let address_within_block = AddressOram::<B, Z>::address_within_block(index);
+        let address_of_block = AddressOram::<B, Z, S>::address_of_block(index);
+        let address_within_block = AddressOram::<B, Z, S>::address_within_block(index);
 
         match self {
             // Base case: index into a linear-time ORAM.
@@ -155,75 +175,4 @@ impl<const B: BlockSize, const Z: BucketSize> Oram<TreeIndex> for AddressOram<B,
             }
         }
     }
-}
-
-#[cfg(test)]
-mod address_oram_tests {
-    use crate::block_value::BlockValue;
-    use crate::path_oram::recursive_insecure_path_oram::*;
-    use crate::path_oram::*;
-    use crate::test_utils::*;
-    use core::iter::zip;
-
-    type ConcreteAddressOram<const AB: BlockSize, V> =
-        VecPathOram<V, DEFAULT_BLOCKS_PER_BUCKET, AddressOram<AB, DEFAULT_BLOCKS_PER_BUCKET>>;
-
-    create_correctness_tests_for_oram_type!(ConcreteAddressOram, AddressOramBlock);
-
-    // Test that the stash size is not growing too large.
-    type CAOStashSizeMonitor<const AB: BlockSize, V> = StashSizeMonitor<ConcreteAddressOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(CAOStashSizeMonitor, AddressOramBlock);
-
-    // Test that the total number of non-dummy blocks in the ORAM stays constant.
-    type CAOConstantOccupancyMonitor<const AB: BlockSize, V> =
-        ConstantOccupancyMonitor<ConcreteAddressOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(CAOConstantOccupancyMonitor, AddressOramBlock);
-
-    // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
-    type CAOPhysicalAccessCountMonitor<const AB: BlockSize, V> =
-        PhysicalAccessCountMonitor<ConcreteAddressOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(CAOPhysicalAccessCountMonitor, AddressOramBlock);
-
-    // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
-    #[derive(Debug)]
-    struct CAOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
-        oram: ConcreteAddressOram<B, V>,
-    }
-    create_statistics_test_for_oram_type!(CAOAccessDistributionTester, BlockValue);
-}
-
-#[cfg(test)]
-mod block_oram_tests {
-    use core::iter::zip;
-
-    use crate::block_value::BlockValue;
-    use crate::path_oram::*;
-    use crate::test_utils::*;
-    use crate::*;
-    use recursive_insecure_path_oram::*;
-
-    type ConcreteBlockOram<const B: BlockSize, V> = BlockOram<B, V, DEFAULT_BLOCKS_PER_BUCKET>;
-
-    create_correctness_tests_for_oram_type!(ConcreteBlockOram, BlockValue);
-
-    // Test that the stash size is not growing too large.
-    type CBOStashSizeMonitor<const AB: BlockSize, V> = StashSizeMonitor<ConcreteBlockOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(CBOStashSizeMonitor, BlockValue);
-
-    // Test that the total number of non-dummy blocks in the ORAM stays constant.
-    type CBOConstantOccupancyMonitor<const AB: BlockSize, V> =
-        ConstantOccupancyMonitor<ConcreteBlockOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(CBOConstantOccupancyMonitor, BlockValue);
-
-    // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
-    type CBOCountPhysicalAccessesMonitor<const AB: BlockSize, V> =
-        PhysicalAccessCountMonitor<ConcreteBlockOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(CBOCountPhysicalAccessesMonitor, BlockValue);
-
-    // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
-    #[derive(Debug)]
-    struct CBOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
-        oram: ConcreteBlockOram<B, V>,
-    }
-    create_statistics_test_for_oram_type!(CBOAccessDistributionTester, BlockValue);
 }

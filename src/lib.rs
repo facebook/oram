@@ -11,10 +11,12 @@
 
 use rand::{CryptoRng, RngCore};
 use subtle::ConditionallySelectable;
+
 pub mod block_value;
 pub mod database;
 pub mod linear_time_oram;
 pub mod path_oram;
+pub mod utils;
 
 #[cfg(test)]
 mod test_utils;
@@ -30,8 +32,6 @@ pub type BucketSize = usize;
 pub trait OramBlock:
     Copy + Clone + std::fmt::Debug + Default + PartialEq + ConditionallySelectable
 {
-    // Can we just do a semicolon instead of braces when defining the trait?
-    // Nevermind, this is basically just a trait alias
 }
 
 /// Represents an oblivious RAM (ORAM) mapping `OramAddress` addresses to `V: OramBlock` values.
