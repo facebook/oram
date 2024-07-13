@@ -28,8 +28,6 @@ pub type ConcreteObliviousAddressOram<const AB: BlockSize, V> = GenericPathOram<
 pub type ConcreteObliviousBlockOram<const B: BlockSize, V> =
     BlockOram<B, V, DEFAULT_BLOCKS_PER_BUCKET, BitonicStash<AddressOramBlock<B>>, BitonicStash<V>>;
 
-// REVIEW NOTE: The rest of this file has already been reviewed. The only difference from a previous version is
-// the concrete ORAM structs being tested.
 #[cfg(test)]
 mod address_oram_tests {
     use super::*;

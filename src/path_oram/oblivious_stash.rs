@@ -7,107 +7,95 @@
 
 //! A fixed-size, obliviously accessed stash implemented using oblivious sorting.
 
-// Overriding Clippy's judgment and asserting that in this case,
-// a range loop is the best way to convey the intent of the code.
-#![allow(clippy::needless_range_loop)]
-
 use super::{
     bucket::Bucket,
     path_oram_block::PathOramBlock,
     stash::{Stash, StashSize},
     tree_index::CompleteBinaryTreeIndex,
+    TreeIndex,
 };
-use crate::{path_oram::bitonic_sort::bitonic_sort_by_keys, OramBlock};
-use std::iter::zip;
+use crate::{
+    database::Database, path_oram::bitonic_sort::bitonic_sort_by_keys, BucketSize, OramBlock,
+};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 #[derive(Debug)]
 /// A fixed-size, obliviously accessed stash data structure implemented using oblivious sorting.
 pub struct BitonicStash<V: OramBlock> {
-    // The blocks in the stash are blocks[0]...blocks[high_water_mark-1].
     blocks: Vec<PathOramBlock<V>>,
-    high_water_mark: u64,
+    path_size: StashSize,
+}
+
+impl<V: OramBlock> BitonicStash<V> {
+    fn len(&self) -> usize {
+        self.blocks.len()
+    }
 }
 
 impl<V: OramBlock> Stash<V> for BitonicStash<V> {
-    fn new(capacity: StashSize) -> Self {
+    fn new(path_size: StashSize, overflow_size: StashSize) -> Self {
         Self {
-            blocks: vec![PathOramBlock::<V>::dummy(); capacity],
-            high_water_mark: 0,
+            blocks: vec![PathOramBlock::<V>::dummy(); path_size + overflow_size],
+            path_size,
         }
     }
 
-    fn add_block(&mut self, block: PathOramBlock<V>) {
-        assert!(self.high_water_mark < self.blocks.len() as u64);
-        self.blocks[self.high_water_mark as usize] = block;
-        self.high_water_mark
-            .conditional_assign(&(self.high_water_mark + 1), !(block.ct_is_dummy()));
-    }
-
-    fn write_to_path<
-        const Z: crate::BucketSize,
-        T: crate::database::Database<super::bucket::Bucket<V, Z>>,
-    >(
+    fn write_to_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
         &mut self,
         physical_memory: &mut T,
-        height: super::TreeHeight,
         position: super::TreeIndex,
     ) {
-        // Sort the blocks to get all the real blocks at the beginning.
-        // An optimized version of this function probably does not require this additional sort.
-        let mut is_dummy: Vec<u8> = vec![0u8; self.blocks.len()];
-        for (a, b) in zip(&self.blocks, &mut is_dummy) {
-            b.conditional_assign(&1u8, a.ct_is_dummy());
-        }
-        bitonic_sort_by_keys(&mut self.blocks, &mut is_dummy);
+        let height = position.depth();
 
-        let retained_block_depth = (height + 1) as u64;
-        let remaining_empty_block_depth = retained_block_depth + 1;
+        let mut level_assignments = vec![TreeIndex::MAX; self.len()];
+        let mut level_counts = vec![0; height as usize + 1];
 
-        let mut depth_assignments = vec![remaining_empty_block_depth; self.blocks.len()];
-        let mut num_blocks_assigned_to_bucket_at_depth = vec![0u64; (height + 1) as usize];
+        for (i, block) in self.blocks.iter().enumerate() {
+            // If `block` is a dummy, the rest of this loop iteration will be a no-op, and the values don't matter.
+            let block_is_dummy = block.ct_is_dummy();
 
-        let mut num_blocks_retained: u64 = 0;
+            // Set up valid but meaningless input to the computation in case `block` is a dummy.
+            let an_arbitrary_leaf: TreeIndex = 1 << height;
+            let block_position =
+                TreeIndex::conditional_select(&block.position, &an_arbitrary_leaf, block_is_dummy);
 
-        // Assign each block to a bucket in the tree, represented by its depth.
-        // If the bucket is already full, assign the block a dummy depth value (meaning it will stay in the stash)
-        for i in 0..self.high_water_mark as usize {
-            assert!(!self.blocks[i].is_dummy());
+            let block_level = block_position
+                .ct_common_ancestor_of_two_leaves(position)
+                .depth() as u64;
 
-            assert!(self.blocks[i].position.is_leaf(height));
-            assert!(position.is_leaf(height));
+            // Obliviously scan through the buckets, assigning the block to the correct one, or to the overflow.
+            for (level, count) in level_counts.iter_mut().enumerate() {
+                let block_level_bucket_full: Choice = count.ct_eq(&(Z as u64));
+                let correct_level = level.ct_eq(&(block_level as usize));
 
-            let level = self.blocks[i]
-                .position
-                .common_ancestor_of_two_leaves(position)
-                .depth() as usize;
-            let occupancy = num_blocks_assigned_to_bucket_at_depth[level];
+                // If the bucket `block` should go in is full, assign the block to the overflow.
+                let should_overflow = correct_level & block_level_bucket_full & (!block_is_dummy);
+                level_assignments[i].conditional_assign(&(TreeIndex::MAX - 1), should_overflow);
 
-            assert!(occupancy <= (Z as u64));
-            let bucket_full: Choice = occupancy.ct_eq(&(Z as u64));
-
-            let num_blocks_incremented = num_blocks_assigned_to_bucket_at_depth[level] + 1;
-            num_blocks_assigned_to_bucket_at_depth[level]
-                .conditional_assign(&(num_blocks_incremented), !bucket_full);
-            depth_assignments[i] =
-                u64::conditional_select(&(level as u64), &retained_block_depth, bucket_full);
-
-            num_blocks_retained.conditional_assign(&(num_blocks_retained + 1), bucket_full);
-        }
-
-        // Fill up the remaining slots in the buckets with dummy blocks.
-        let mut i = self.high_water_mark as usize;
-        for level in 0..=height as usize {
-            for _free_slot in (num_blocks_assigned_to_bucket_at_depth[level] as usize)..Z {
-                depth_assignments[i] = level as u64;
-                i += 1;
+                // Otherwise, assign
+                let should_assign = correct_level & (!block_level_bucket_full) & (!block_is_dummy);
+                let level_count_incremented = *count + 1;
+                count.conditional_assign(&level_count_incremented, should_assign);
+                level_assignments[i].conditional_assign(&block_level, should_assign);
             }
         }
 
-        // Sort the blocks by their level assignments.
-        // This puts the blocks assigned to buckets in the first Z * height places, in ascending order of depth,
-        // followed by the `num_blocks_retained` blocks retained in the stash, followed by dummy blocks.
-        bitonic_sort_by_keys(&mut self.blocks, &mut depth_assignments);
+        // Assign dummy blocks to the remaining non-full buckets until all buckets are full.
+        for (i, block) in self.blocks.iter().enumerate() {
+            let block_free = block.ct_is_dummy();
+
+            let mut assigned: Choice = 0.into();
+            for (level, count) in level_counts.iter_mut().enumerate() {
+                let full = count.ct_eq(&(Z as u64));
+                let no_op = assigned | full | !block_free;
+
+                level_assignments[i].conditional_assign(&(level as u64), !no_op);
+                count.conditional_assign(&(*count + 1), !no_op);
+                assigned |= !no_op;
+            }
+        }
+
+        bitonic_sort_by_keys(&mut self.blocks, &mut level_assignments);
 
         // Write the first Z * height blocks into slots in the tree
         for depth in 0..=height {
@@ -117,29 +105,12 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
                 let stash_index = (depth as usize) * Z + slot_number;
 
                 new_bucket.blocks[slot_number] = self.blocks[stash_index];
-
-                let shift_from_index = stash_index + Z * ((height + 1) as usize);
-
-                // Acceptable if: does not depend on secret values.
-                if shift_from_index >= self.blocks.len() {
-                    self.blocks[stash_index] = PathOramBlock::dummy();
-                } else {
-                    self.blocks[stash_index] =
-                        self.blocks[stash_index + (Z * ((height + 1) as usize))];
-                    self.blocks[stash_index + (Z * ((height + 1) as usize))] =
-                        PathOramBlock::dummy();
-                }
             }
 
             physical_memory.write_db(position.node_on_path(depth, height) as usize, new_bucket);
         }
-
-        // Clean up self
-        self.high_water_mark = num_blocks_retained;
     }
 
-    // REVIEW NOTE: this method was already reviewed, when it was a Path ORAM method, not a stash method. The only change
-    // is `self.blocks` was `self.stash`.
     fn access<F: Fn(&V) -> V>(
         &mut self,
         address: crate::Address,
@@ -169,7 +140,32 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         result
     }
 
+    #[cfg(test)]
     fn occupancy(&self) -> StashSize {
-        self.high_water_mark as usize
+        // self.high_water_mark as usize
+        let mut result = 0;
+        // for block in &self.blocks {
+        for i in self.path_size..self.blocks.len() {
+            if !self.blocks[i].is_dummy() {
+                result += 1;
+            }
+        }
+        result
+    }
+
+    fn read_from_path<const Z: crate::BucketSize, T: crate::database::Database<Bucket<V, Z>>>(
+        &mut self,
+        physical_memory: &mut T,
+        position: super::TreeIndex,
+    ) {
+        let height = position.depth();
+
+        for i in (0..(self.path_size / Z) as u32).rev() {
+            let bucket_index = position.node_on_path(i, height);
+            let bucket = physical_memory.read_db(bucket_index as usize);
+            for slot_index in 0..Z {
+                self.blocks[Z * (i as usize) + slot_index] = bucket.blocks[slot_index];
+            }
+        }
     }
 }
