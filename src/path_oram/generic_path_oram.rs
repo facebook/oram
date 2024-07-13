@@ -58,13 +58,8 @@ impl<
         assert_ne!(position, 0);
         assert!(position.is_leaf(self.height));
 
-        for depth in 0..=self.height {
-            let bucket_index: TreeIndex = position.node_on_path(depth, self.height);
-            let bucket = self.physical_memory.read_db(bucket_index as Address);
-            for block in bucket.blocks {
-                self.stash.add_block(block);
-            }
-        }
+        self.stash
+            .read_from_path(&mut self.physical_memory, position);
 
         // Scan the stash for the target block, read its value into `result`,
         // and overwrite its position (and possibly its value).
@@ -73,13 +68,11 @@ impl<
         // Evict blocks from the stash into the path that was just read,
         // replacing them with dummy blocks.
         self.stash
-            .write_to_path(&mut self.physical_memory, self.height, position);
+            .write_to_path(&mut self.physical_memory, position);
 
         result
     }
 
-    // REVIEW NOTE: This method is essentially unchanged. The only difference is that the line `let stash = ...`
-    // was `let stash = Vec::new();`
     fn new<R: Rng + CryptoRng>(block_capacity: usize, rng: &mut R) -> Self {
         log::debug!(
             "Oram::new -- BlockOram(B = {}, Z = {}, C = {})",
@@ -96,7 +89,8 @@ impl<
         let height = block_capacity.ilog2() - 1;
         assert!(height <= MAXIMUM_TREE_HEIGHT);
 
-        let stash = S::new(64);
+        let path_size = Z * (height as usize + 1);
+        let stash = S::new(path_size, 64 - path_size);
 
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
