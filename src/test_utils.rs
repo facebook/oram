@@ -17,7 +17,7 @@ use crate::path_oram::bucket::Bucket;
 use crate::path_oram::generic_path_oram::GenericPathOram;
 use crate::path_oram::position_map::PositionMap;
 use crate::path_oram::stash::Stash;
-use crate::{BlockSize, BucketSize, Oram, OramBlock, OramError};
+use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError};
 use duplicate::duplicate_item;
 use rand::{
     distributions::{Distribution, Standard},
@@ -51,8 +51,8 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize, P: PositionMap<AB>,
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
 pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testable>(
-    capacity: usize,
-    num_operations: u32,
+    capacity: Address,
+    num_operations: usize,
 ) where
     Standard: Distribution<V>,
 {
@@ -60,7 +60,7 @@ pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testab
     let mut rng = StdRng::seed_from_u64(0);
 
     let mut oram = T::new(capacity, &mut rng).unwrap();
-    let mut mirror_array = vec![V::default(); capacity];
+    let mut mirror_array = vec![V::default(); usize::try_from(capacity).unwrap()];
 
     for _ in 0..num_operations {
         let random_index = rng.gen_range(0..capacity);
@@ -71,19 +71,19 @@ pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testab
         if read_versus_write {
             assert_eq!(
                 oram.read(random_index, &mut rng).unwrap(),
-                mirror_array[random_index]
+                mirror_array[usize::try_from(random_index).unwrap()]
             );
         } else {
             oram.write(random_index, random_block_value, &mut rng)
                 .unwrap();
-            mirror_array[random_index] = random_block_value;
+            mirror_array[usize::try_from(random_index).unwrap()] = random_block_value;
         }
     }
 
     for index in 0..capacity {
         assert_eq!(
             oram.read(index, &mut rng).unwrap(),
-            mirror_array[index],
+            mirror_array[usize::try_from(index).unwrap()],
             "{index}"
         )
     }
@@ -93,8 +93,8 @@ pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testab
 
 /// Tests the correctness of an `Oram` type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
 pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Testable + Debug>(
-    capacity: usize,
-    num_operations: u32,
+    capacity: Address,
+    num_operations: u64,
 ) where
     Standard: Distribution<V>,
 {
@@ -102,10 +102,9 @@ pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Testab
     let mut rng = StdRng::seed_from_u64(0);
 
     let mut oram = T::new(capacity, &mut rng).unwrap();
+    let mut mirror_array = vec![V::default(); usize::try_from(capacity).unwrap()];
 
-    let mut mirror_array = vec![V::default(); capacity];
-
-    let num_passes = (num_operations as usize) / capacity;
+    let num_passes = num_operations / capacity;
 
     for _ in 0..num_passes {
         for index in 0..capacity {
@@ -114,10 +113,13 @@ pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Testab
             let read_versus_write: bool = rng.gen::<bool>();
 
             if read_versus_write {
-                assert_eq!(oram.read(index, &mut rng).unwrap(), mirror_array[index]);
+                assert_eq!(
+                    oram.read(index, &mut rng).unwrap(),
+                    mirror_array[usize::try_from(index).unwrap()]
+                );
             } else {
                 oram.write(index, random_block_value, &mut rng).unwrap();
-                mirror_array[index] = random_block_value;
+                mirror_array[usize::try_from(index).unwrap()] = random_block_value;
             }
         }
     }
@@ -125,7 +127,7 @@ pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Testab
     for index in 0..capacity {
         assert_eq!(
             oram.read(index, &mut rng).unwrap(),
-            mirror_array[index],
+            mirror_array[usize::try_from(index).unwrap()],
             "{index}"
         )
     }
@@ -188,7 +190,7 @@ macro_rules! monitor_boilerplate {
             })
         }
 
-        fn block_capacity(&self) -> crate::Address {
+        fn block_capacity(&self) -> Result<Address, OramError> {
             self.oram.block_capacity()
         }
     };
@@ -197,10 +199,10 @@ macro_rules! monitor_boilerplate {
 pub(crate) use monitor_boilerplate;
 
 impl<V: OramBlock, const Z: BucketSize> CountAccessesDatabase<Bucket<V, Z>> {
-    fn tree_occupancy(&mut self) -> usize {
+    fn tree_occupancy(&mut self) -> u64 {
         let mut result = 0;
-        for i in 0..self.capacity() {
-            let bucket = self.read_db(i);
+        for i in 0..self.capacity().unwrap() {
+            let bucket = self.read_db(i).unwrap();
             for block in bucket.blocks {
                 if !block.is_dummy() {
                     result += 1;
@@ -275,7 +277,10 @@ impl<
         let stash_occupancy = self.oram.stash.occupancy();
 
         let tree_occupancy = self.oram.physical_memory.tree_occupancy();
-        assert_eq!(stash_occupancy + tree_occupancy, self.oram.block_capacity());
+        assert_eq!(
+            stash_occupancy + tree_occupancy,
+            self.oram.block_capacity().unwrap()
+        );
         result
     }
 }
@@ -317,8 +322,8 @@ impl<
         let reads = post_read_count - pre_read_count;
         let writes = post_write_count - pre_write_count;
 
-        assert_eq!(reads, self.oram.block_capacity().ilog2() as u128);
-        assert_eq!(writes, self.oram.block_capacity().ilog2() as u128);
+        assert_eq!(reads, self.oram.block_capacity()?.ilog2() as u64);
+        assert_eq!(writes, self.oram.block_capacity()?.ilog2() as u64);
 
         result
     }
@@ -359,7 +364,7 @@ macro_rules! create_statistics_test_for_oram_type {
                 Ok(Self { oram })
             }
 
-            fn block_capacity(&self) -> crate::Address {
+            fn block_capacity(&self) -> Result<Address, OramError> {
                 self.oram.block_capacity()
             }
 
@@ -376,22 +381,22 @@ macro_rules! create_statistics_test_for_oram_type {
         impl<const B: BlockSize, V: OramBlock> Testable for $oram_type<B, V> {
             fn test_hook(&self) {
                 let reads = &self.oram.physical_memory.reads;
-                let writes: &Vec<u128> = &self.oram.physical_memory.writes;
+                let writes: &Vec<u64> = &self.oram.physical_memory.writes;
 
                 for (r, w) in zip(reads, writes) {
                     assert_eq!(*r, *w);
                 }
 
-                let first_leaf_index = 2u64.pow(self.oram.height);
+                let first_leaf_index = 2u64.pow(self.oram.height.try_into().unwrap());
                 let last_leaf_index = first_leaf_index * 2 - 1;
-                let num_leaves = last_leaf_index - first_leaf_index;
+                let num_leaves = (last_leaf_index - first_leaf_index);
 
                 let mut total_reads = 0;
                 for leaf in first_leaf_index..last_leaf_index {
                     total_reads += reads[leaf as usize];
                 }
 
-                let expected_reads_per_leaf: u128 = total_reads / num_leaves as u128;
+                let expected_reads_per_leaf = total_reads / num_leaves;
 
                 for leaf in first_leaf_index..=last_leaf_index {
                     assert!(

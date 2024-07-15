@@ -11,7 +11,7 @@ use crate::BucketSize;
 use path_oram_block::PathOramBlock;
 
 pub(crate) type TreeIndex = u64;
-type TreeHeight = u32;
+type TreeHeight = u64;
 
 /// The parameter "Z" from the Path ORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
 /// Here we adopt the more conservative setting of 4.

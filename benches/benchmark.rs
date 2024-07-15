@@ -24,26 +24,27 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use oram::linear_time_oram::LinearTimeOram;
 use oram::path_oram::recursive_secure_path_oram::ConcreteObliviousBlockOram;
 
-const CAPACITIES_TO_BENCHMARK: [usize; 3] = [1 << 14, 1 << 16, 1 << 20];
-const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
+const CAPACITIES_TO_BENCHMARK: [Address; 3] = [1 << 14, 1 << 16, 1 << 20];
+const NUM_RANDOM_OPERATIONS_TO_RUN: u64 = 64;
 
 trait Instrumented {
-    fn get_read_count(&self) -> u128;
-    fn get_write_count(&self) -> u128;
+    fn get_read_count(&self) -> u64;
+    fn get_write_count(&self) -> u64;
     fn short_name() -> String;
 }
 
-type BenchmarkLinearTimeOram<const B: usize> = LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
+type BenchmarkLinearTimeOram<const B: BlockSize> =
+    LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
 
-type BenchmarkRecursiveSecurePathOram<const B: usize> =
+type BenchmarkRecursiveSecurePathOram<const B: BlockSize> =
     ConcreteObliviousBlockOram<4096, BlockValue<B>>;
 
 impl<const B: BlockSize> Instrumented for BenchmarkRecursiveSecurePathOram<B> {
-    fn get_read_count(&self) -> u128 {
+    fn get_read_count(&self) -> u64 {
         self.physical_memory.get_read_count()
     }
 
-    fn get_write_count(&self) -> u128 {
+    fn get_write_count(&self) -> u64 {
         self.physical_memory.get_write_count()
     }
 
@@ -53,11 +54,11 @@ impl<const B: BlockSize> Instrumented for BenchmarkRecursiveSecurePathOram<B> {
 }
 
 impl<const B: BlockSize> Instrumented for BenchmarkLinearTimeOram<B> {
-    fn get_read_count(&self) -> u128 {
+    fn get_read_count(&self) -> u64 {
         return self.physical_memory.get_read_count();
     }
 
-    fn get_write_count(&self) -> u128 {
+    fn get_write_count(&self) -> u64 {
         return self.physical_memory.get_write_count();
     }
 
@@ -126,7 +127,7 @@ criterion_main!(benches);
 fn count_accesses_on_operation<
     const B: BlockSize,
     T: Oram<BlockValue<B>> + Instrumented,
-    F: Fn(&mut T, &mut StdRng, usize) -> (),
+    F: Fn(&mut T, &mut StdRng, Address) -> (),
 >(
     operation: F,
 ) {
@@ -173,10 +174,12 @@ fn count_accesses_on_random_workload<const B: usize, T: Oram<BlockValue<B>> + In
 
         let mut read_versus_write_randomness = vec![false; number_of_operations_to_run];
         rng.fill(&mut read_versus_write_randomness[..]);
-        let mut value_randomness = vec![0u8; 4096 * capacity];
+
+        let capacity_usize: usize = capacity.try_into().unwrap();
+        let mut value_randomness = vec![0u8; 4096 * capacity_usize];
         rng.fill(&mut value_randomness[..]);
 
-        let mut index_randomness = vec![0usize; number_of_operations_to_run];
+        let mut index_randomness = vec![0u64; number_of_operations_to_run];
         for i in 0..number_of_operations_to_run {
             index_randomness[i] = rng.gen_range(0..capacity);
         }
@@ -250,16 +253,17 @@ fn benchmark_random_operations<const B: usize, T: Oram<BlockValue<B>> + Instrume
         let number_of_operations_to_run = 64 as usize;
 
         let block_size = B;
-        let capacity: usize = oram.block_capacity();
+        let capacity = oram.block_capacity().unwrap();
         let parameters = &RandomOperationsParameters {
             capacity,
             block_size,
             number_of_operations_to_run,
         };
 
-        let mut index_randomness = vec![0usize; number_of_operations_to_run];
+        let mut index_randomness = vec![0u64; number_of_operations_to_run];
         let mut read_versus_write_randomness = vec![false; number_of_operations_to_run];
-        let mut value_randomness = vec![0u8; block_size * capacity];
+        let capacity_usize: usize = capacity.try_into().unwrap();
+        let mut value_randomness = vec![0u8; block_size * capacity_usize];
         for i in 0..number_of_operations_to_run {
             index_randomness[i] = rng.gen_range(0..capacity);
         }
@@ -302,8 +306,9 @@ fn run_many_random_accesses<const B: usize, T: Oram<BlockValue<B>>>(
             oram.read(random_index, &mut rng).unwrap();
         } else {
             let block_size = B;
-            let start_index = block_size * random_index;
-            let end_index = block_size * (random_index + 1);
+            let random_index_usize: usize = random_index.try_into().unwrap();
+            let start_index = block_size * random_index_usize;
+            let end_index = block_size * random_index_usize;
             let random_bytes: [u8; B] =
                 value_randomness[start_index..end_index].try_into().unwrap();
             oram.write(random_index, BlockValue::new(random_bytes), &mut rng)
@@ -316,7 +321,7 @@ fn run_many_random_accesses<const B: usize, T: Oram<BlockValue<B>>>(
 
 #[derive(Clone, Copy)]
 struct ReadWriteParameters {
-    capacity: usize,
+    capacity: Address,
     block_size: usize,
 }
 
@@ -332,7 +337,7 @@ impl fmt::Display for ReadWriteParameters {
 
 #[derive(Clone, Copy)]
 struct RandomOperationsParameters {
-    capacity: usize,
+    capacity: Address,
     block_size: usize,
     number_of_operations_to_run: usize,
 }
