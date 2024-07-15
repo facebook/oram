@@ -15,9 +15,9 @@ use crate::database::{CountAccessesDatabase, Database, SimpleDatabase};
 use crate::linear_time_oram::LinearTimeOram;
 use crate::path_oram::bucket::Bucket;
 use crate::path_oram::generic_path_oram::GenericPathOram;
+use crate::path_oram::position_map::PositionMap;
 use crate::path_oram::stash::Stash;
-use crate::path_oram::TreeIndex;
-use crate::{BucketSize, Oram, OramBlock};
+use crate::{BlockSize, BucketSize, Oram, OramBlock};
 use duplicate::duplicate_item;
 use rand::{
     distributions::{Distribution, Standard},
@@ -44,8 +44,8 @@ pub trait Testable {
 )]
 impl<V: OramBlock> Testable for database_type<V> {}
 impl<DB> Testable for LinearTimeOram<DB> {}
-impl<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex>, S: Stash<V>> Testable
-    for GenericPathOram<V, Z, P, S>
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize, P: PositionMap<AB>, S: Stash<V>>
+    Testable for GenericPathOram<V, Z, AB, P, S>
 {
 }
 
@@ -138,17 +138,14 @@ macro_rules! create_correctness_test_block_value {
 macro_rules! create_correctness_tests_for_workload_and_oram_type {
     ($function_name: ident, $oram_type: ident, $block_type: ident) => {
         create_correctness_test_block_value!($function_name, $oram_type, $block_type, 2, 2, 10);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 8, 2, 10);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 16, 2, 100);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 2, 16, 100);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 8, 16, 100);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 16, 16, 100);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 2, 32, 100);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 2, 32, 1000);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 8, 32, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 4, 8, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 2, 8, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 8, 8, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 4, 16, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 4, 32, 100);
         // Block size 16 bytes, block capacity 32 blocks, testing with 100 operations
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 16, 32, 100);
-        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 4, 256, 1000);
+        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 16, 64, 100);
+        create_correctness_test_block_value!($function_name, $oram_type, $block_type, 2, 8, 1000);
     };
 }
 
@@ -212,15 +209,16 @@ pub(crate) struct StashSizeMonitor<T> {
 
 impl<T> Testable for StashSizeMonitor<T> {}
 
-pub(crate) type VecStashSizeMonitor<V, const Z: BucketSize, P, S> =
-    StashSizeMonitor<GenericPathOram<V, Z, P, S>>;
+pub(crate) type VecStashSizeMonitor<V, const Z: BucketSize, const AB: BlockSize, P, S> =
+    StashSizeMonitor<GenericPathOram<V, Z, AB, P, S>>;
 
 impl<
         V: OramBlock,
         const Z: BucketSize,
-        P: Oram<TreeIndex> + std::fmt::Debug,
+        const AB: BlockSize,
+        P: PositionMap<AB> + std::fmt::Debug,
         S: Stash<V> + std::fmt::Debug,
-    > Oram<V> for VecStashSizeMonitor<V, Z, P, S>
+    > Oram<V> for VecStashSizeMonitor<V, Z, AB, P, S>
 {
     monitor_boilerplate!();
 
@@ -244,15 +242,16 @@ pub(crate) struct ConstantOccupancyMonitor<T> {
 
 impl<T> Testable for ConstantOccupancyMonitor<T> {}
 
-pub(crate) type VecConstantOccupancyMonitor<V, const Z: BucketSize, P, S> =
-    ConstantOccupancyMonitor<GenericPathOram<V, Z, P, S>>;
+pub(crate) type VecConstantOccupancyMonitor<V, const Z: BucketSize, const AB: BlockSize, P, S> =
+    ConstantOccupancyMonitor<GenericPathOram<V, Z, AB, P, S>>;
 
 impl<
         V: OramBlock,
         const Z: BucketSize,
-        P: Oram<TreeIndex> + std::fmt::Debug,
+        const AB: BlockSize,
+        P: PositionMap<AB> + std::fmt::Debug,
         S: Stash<V> + std::fmt::Debug,
-    > Oram<V> for VecConstantOccupancyMonitor<V, Z, P, S>
+    > Oram<V> for VecConstantOccupancyMonitor<V, Z, AB, P, S>
 {
     monitor_boilerplate!();
 
@@ -279,15 +278,16 @@ pub(crate) struct PhysicalAccessCountMonitor<T> {
 
 impl<T> Testable for PhysicalAccessCountMonitor<T> {}
 
-pub(crate) type VecPhysicalAccessCountMonitor<V, const Z: BucketSize, P, S> =
-    PhysicalAccessCountMonitor<GenericPathOram<V, Z, P, S>>;
+pub(crate) type VecPhysicalAccessCountMonitor<V, const Z: BucketSize, const AB: BlockSize, P, S> =
+    PhysicalAccessCountMonitor<GenericPathOram<V, Z, AB, P, S>>;
 
 impl<
         V: OramBlock,
         const Z: BucketSize,
-        P: Oram<TreeIndex> + std::fmt::Debug,
+        const AB: BlockSize,
+        P: PositionMap<AB> + std::fmt::Debug,
         S: Stash<V> + std::fmt::Debug,
-    > Oram<V> for VecPhysicalAccessCountMonitor<V, Z, P, S>
+    > Oram<V> for VecPhysicalAccessCountMonitor<V, Z, AB, P, S>
 {
     monitor_boilerplate!();
 

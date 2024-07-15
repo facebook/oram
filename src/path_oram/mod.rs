@@ -25,6 +25,7 @@ pub mod generic_path_oram;
 pub mod generic_recursive_path_oram;
 pub(crate) mod oblivious_stash;
 mod path_oram_block;
+pub(crate) mod position_map;
 pub mod recursive_secure_path_oram;
 pub(crate) mod stash;
 mod tree_index;
