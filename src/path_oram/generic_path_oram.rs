@@ -17,7 +17,7 @@ use crate::{
     utils::{
         invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
     },
-    Address, BlockSize, BucketSize, Oram, OramBlock,
+    Address, BlockSize, BucketSize, Oram, OramBlock, OramError,
 };
 use rand::{CryptoRng, Rng};
 use std::mem;
@@ -55,14 +55,14 @@ impl<
         address: Address,
         callback: F,
         rng: &mut R,
-    ) -> V {
+    ) -> Result<V, OramError> {
         assert!(address < self.block_capacity());
 
         // Get the position of the target block (with address `address`),
         // and update that block's position map entry to a fresh random position
         let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, rng);
         assert_ne!(new_position, 0);
-        let position = self.position_map.write(address, new_position, rng);
+        let position = self.position_map.write(address, new_position, rng)?;
         assert_ne!(position, 0);
         assert!(position.is_leaf(self.height));
 
@@ -78,10 +78,10 @@ impl<
         self.stash
             .write_to_path(&mut self.physical_memory, position);
 
-        result
+        Ok(result)
     }
 
-    fn new<R: Rng + CryptoRng>(block_capacity: usize, rng: &mut R) -> Self {
+    fn new<R: Rng + CryptoRng>(block_capacity: usize, rng: &mut R) -> Result<Self, OramError> {
         log::debug!(
             "Oram::new -- BlockOram(B = {}, Z = {}, C = {})",
             mem::size_of::<V>(),
@@ -110,7 +110,7 @@ impl<
         // This is done by (1) initializing the position map with fresh random leaf identifiers,
         // and (2) writing blocks to the physical memory with the appropriate positions, and default values.
 
-        let mut position_map = P::new(block_capacity, rng);
+        let mut position_map = P::new(block_capacity, rng)?;
 
         let slot_indices_to_addresses =
             random_permutation_of_0_through_n_exclusive(block_capacity as u64, rng);
@@ -153,15 +153,15 @@ impl<
                     as TreeIndex;
             }
             let block = AddressOramBlock::<AB> { data };
-            position_map.write_position_block(block_index * AB, block, rng);
+            position_map.write_position_block(block_index * AB, block, rng)?;
         }
 
-        Self {
+        Ok(Self {
             physical_memory,
             stash,
             position_map,
             height,
-        }
+        })
     }
 
     fn block_capacity(&self) -> Address {

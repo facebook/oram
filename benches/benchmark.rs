@@ -132,7 +132,7 @@ fn count_accesses_on_operation<
 ) {
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity, &mut rng);
+        let mut oram = T::new(capacity, &mut rng).unwrap();
 
         let read_count_before = oram.get_read_count();
         let write_count_before = oram.get_write_count();
@@ -153,7 +153,7 @@ fn count_accesses_on_read<const B: usize, T: Oram<BlockValue<B>> + Instrumented>
     _: &mut Criterion,
 ) {
     count_accesses_on_operation(|oram: &mut T, rng, _capacity| {
-        oram.read(0, rng);
+        oram.read(0, rng).unwrap();
     });
 }
 
@@ -161,7 +161,7 @@ fn count_accesses_on_write<const B: usize, T: Oram<BlockValue<B>> + Instrumented
     _: &mut Criterion,
 ) {
     count_accesses_on_operation(|oram: &mut T, rng: &mut StdRng, _capacity| {
-        oram.write(0, BlockValue::default(), rng);
+        oram.write(0, BlockValue::default(), rng).unwrap();
     });
 }
 
@@ -212,7 +212,7 @@ fn benchmark_read<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(c: &mut
     let mut group = c.benchmark_group(T::short_name() + "::read");
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram = T::new(*capacity, &mut rng);
+        let mut oram = T::new(*capacity, &mut rng).unwrap();
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
@@ -227,7 +227,7 @@ fn benchmark_write<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(c: &mu
     let mut group = c.benchmark_group(T::short_name() + "::write");
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram = T::new(*capacity, &mut rng);
+        let mut oram = T::new(*capacity, &mut rng).unwrap();
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
@@ -245,7 +245,7 @@ fn benchmark_random_operations<const B: usize, T: Oram<BlockValue<B>> + Instrume
     let mut rng = StdRng::seed_from_u64(0);
 
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity, &mut rng);
+        let mut oram = T::new(capacity, &mut rng).unwrap();
 
         let number_of_operations_to_run = 64 as usize;
 
@@ -299,14 +299,15 @@ fn run_many_random_accesses<const B: usize, T: Oram<BlockValue<B>>>(
         let random_read_versus_write: bool = read_versus_write_randomness[operation_number];
 
         if random_read_versus_write {
-            oram.read(random_index, &mut rng);
+            oram.read(random_index, &mut rng).unwrap();
         } else {
             let block_size = B;
             let start_index = block_size * random_index;
             let end_index = block_size * (random_index + 1);
             let random_bytes: [u8; B] =
                 value_randomness[start_index..end_index].try_into().unwrap();
-            oram.write(random_index, BlockValue::new(random_bytes), &mut rng);
+            oram.write(random_index, BlockValue::new(random_bytes), &mut rng)
+                .unwrap();
         }
     }
 
