@@ -17,7 +17,7 @@ use crate::path_oram::bucket::Bucket;
 use crate::path_oram::generic_path_oram::GenericPathOram;
 use crate::path_oram::position_map::PositionMap;
 use crate::path_oram::stash::Stash;
-use crate::{BlockSize, BucketSize, Oram, OramBlock};
+use crate::{BlockSize, BucketSize, Oram, OramBlock, OramError};
 use duplicate::duplicate_item;
 use rand::{
     distributions::{Distribution, Standard},
@@ -59,7 +59,7 @@ pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testab
     init_logger();
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut oram = T::new(capacity, &mut rng);
+    let mut oram = T::new(capacity, &mut rng).unwrap();
     let mut mirror_array = vec![V::default(); capacity];
 
     for _ in 0..num_operations {
@@ -70,17 +70,22 @@ pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testab
 
         if read_versus_write {
             assert_eq!(
-                oram.read(random_index, &mut rng),
+                oram.read(random_index, &mut rng).unwrap(),
                 mirror_array[random_index]
             );
         } else {
-            oram.write(random_index, random_block_value, &mut rng);
+            oram.write(random_index, random_block_value, &mut rng)
+                .unwrap();
             mirror_array[random_index] = random_block_value;
         }
     }
 
     for index in 0..capacity {
-        assert_eq!(oram.read(index, &mut rng), mirror_array[index], "{index}")
+        assert_eq!(
+            oram.read(index, &mut rng).unwrap(),
+            mirror_array[index],
+            "{index}"
+        )
     }
 
     oram.test_hook();
@@ -96,7 +101,7 @@ pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Testab
     init_logger();
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut oram = T::new(capacity, &mut rng);
+    let mut oram = T::new(capacity, &mut rng).unwrap();
 
     let mut mirror_array = vec![V::default(); capacity];
 
@@ -109,16 +114,20 @@ pub(crate) fn test_correctness_linear_workload<V: OramBlock, T: Oram<V> + Testab
             let read_versus_write: bool = rng.gen::<bool>();
 
             if read_versus_write {
-                assert_eq!(oram.read(index, &mut rng), mirror_array[index]);
+                assert_eq!(oram.read(index, &mut rng).unwrap(), mirror_array[index]);
             } else {
-                oram.write(index, random_block_value, &mut rng);
+                oram.write(index, random_block_value, &mut rng).unwrap();
                 mirror_array[index] = random_block_value;
             }
         }
     }
 
     for index in 0..capacity {
-        assert_eq!(oram.read(index, &mut rng), mirror_array[index], "{index}")
+        assert_eq!(
+            oram.read(index, &mut rng).unwrap(),
+            mirror_array[index],
+            "{index}"
+        )
     }
 
     oram.test_hook();
@@ -173,10 +182,10 @@ macro_rules! monitor_boilerplate {
         fn new<R: rand::RngCore + rand::CryptoRng>(
             block_capacity: crate::Address,
             rng: &mut R,
-        ) -> Self {
-            Self {
-                oram: GenericPathOram::new(block_capacity, rng),
-            }
+        ) -> Result<Self, OramError> {
+            Ok(Self {
+                oram: GenericPathOram::new(block_capacity, rng)?,
+            })
         }
 
         fn block_capacity(&self) -> crate::Address {
@@ -227,7 +236,7 @@ impl<
         index: crate::Address,
         callback: F,
         rng: &mut R,
-    ) -> V {
+    ) -> Result<V, OramError> {
         let result = self.oram.access(index, callback, rng);
         let stash_size = self.oram.stash.occupancy();
         assert!(stash_size < 10);
@@ -260,7 +269,7 @@ impl<
         index: crate::Address,
         callback: F,
         rng: &mut R,
-    ) -> V {
+    ) -> Result<V, OramError> {
         let result = self.oram.access(index, callback, rng);
 
         let stash_occupancy = self.oram.stash.occupancy();
@@ -296,7 +305,7 @@ impl<
         index: crate::Address,
         callback: F,
         rng: &mut R,
-    ) -> V {
+    ) -> Result<V, OramError> {
         let pre_read_count = self.oram.physical_memory.get_read_count();
         let pre_write_count = self.oram.physical_memory.get_write_count();
 
@@ -338,8 +347,8 @@ macro_rules! create_statistics_test_for_oram_type {
             fn new<R: rand::RngCore + rand::CryptoRng>(
                 block_capacity: crate::Address,
                 rng: &mut R,
-            ) -> Self {
-                let mut oram = GenericPathOram::new(block_capacity, rng);
+            ) -> Result<Self, OramError> {
+                let mut oram = GenericPathOram::new(block_capacity, rng).unwrap();
 
                 // Avoid counting reads and writes occurring during initialization
                 for i in 0..oram.physical_memory.reads.len() {
@@ -347,7 +356,7 @@ macro_rules! create_statistics_test_for_oram_type {
                     oram.physical_memory.writes[i] = 0;
                 }
 
-                Self { oram }
+                Ok(Self { oram })
             }
 
             fn block_capacity(&self) -> crate::Address {
@@ -359,7 +368,7 @@ macro_rules! create_statistics_test_for_oram_type {
                 index: crate::Address,
                 callback: F,
                 rng: &mut R,
-            ) -> V {
+            ) -> Result<V, OramError> {
                 self.oram.access(index, callback, rng)
             }
         }

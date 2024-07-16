@@ -11,6 +11,7 @@
 
 use rand::{CryptoRng, RngCore};
 use subtle::ConditionallySelectable;
+use thiserror::Error;
 
 pub mod block_value;
 pub mod database;
@@ -34,11 +35,19 @@ pub trait OramBlock:
 {
 }
 
+#[derive(Error, Debug)]
+/// An Error type for errors occuring during ORAM operations.
+pub enum OramError {}
+
 /// Represents an oblivious RAM (ORAM) mapping `OramAddress` addresses to `V: OramBlock` values.
 /// `B` represents the size of each block of the ORAM in bytes.
-pub trait Oram<V: OramBlock> {
+pub trait Oram<V: OramBlock>
+where
+    Self: Sized,
+{
     /// Returns a new ORAM mapping addresses `0 <= address < block_capacity` to default `V` values.
-    fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R) -> Self;
+    fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R)
+        -> Result<Self, OramError>;
 
     /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> Address;
@@ -50,17 +59,26 @@ pub trait Oram<V: OramBlock> {
         index: Address,
         callback: F,
         rng: &mut R,
-    ) -> V;
+    ) -> Result<V, OramError>;
 
     /// Obliviously reads the value stored at `index`.
-    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, rng: &mut R) -> V {
+    fn read<R: RngCore + CryptoRng>(
+        &mut self,
+        index: Address,
+        rng: &mut R,
+    ) -> Result<V, OramError> {
         log::debug!("ORAM read: {}", index);
         let callback = |x: &V| *x;
         self.access(index, callback, rng)
     }
 
     /// Obliviously writes the value stored at `index`. Returns the value previously stored at `index`.
-    fn write<R: RngCore + CryptoRng>(&mut self, index: Address, new_value: V, rng: &mut R) -> V {
+    fn write<R: RngCore + CryptoRng>(
+        &mut self,
+        index: Address,
+        new_value: V,
+        rng: &mut R,
+    ) -> Result<V, OramError> {
         log::debug!("ORAM write: {}", index);
         let callback = |_: &V| new_value;
         self.access(index, callback, rng)

@@ -8,7 +8,7 @@
 //! A simple linear-time implementation of Oblivious RAM.
 
 use crate::database::Database;
-use crate::{Address, Oram, OramBlock};
+use crate::{Address, Oram, OramBlock, OramError};
 use rand::{CryptoRng, RngCore};
 use subtle::{ConstantTimeEq, ConstantTimeLess};
 
@@ -21,10 +21,10 @@ pub struct LinearTimeOram<DB> {
 }
 
 impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
-    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Self {
-        Self {
+    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Result<Self, OramError> {
+        Ok(Self {
             physical_memory: DB::new(block_capacity),
-        }
+        })
     }
 
     fn access<R: RngCore + CryptoRng, F: Fn(&V) -> V>(
@@ -32,7 +32,7 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
         index: Address,
         callback: F,
         _: &mut R,
-    ) -> V {
+    ) -> Result<V, OramError> {
         // TODO(#6): Handle malformed input in a more robust way.
         let index_in_bounds: bool = (index as u128)
             .ct_lt(&(self.block_capacity() as u128))
@@ -56,7 +56,7 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
 
             self.physical_memory.write_db(i, potentially_updated_value);
         }
-        result
+        Ok(result)
     }
 
     fn block_capacity(&self) -> Address {

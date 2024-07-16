@@ -9,7 +9,7 @@
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
-use crate::{Address, Oram, OramBlock};
+use crate::{Address, Oram, OramBlock, OramError};
 use duplicate::duplicate_item;
 use rand::{CryptoRng, RngCore};
 
@@ -108,16 +108,21 @@ impl<V: OramBlock> Database<V> for CountAccessesDatabase<V> {
     [CountAccessesDatabase];
 )]
 impl<V: OramBlock> Oram<V> for database_type<V> {
-    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Self {
-        Database::new(block_capacity)
+    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Result<Self, OramError> {
+        Ok(Database::new(block_capacity))
     }
 
-    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, _: &mut R) -> V {
-        self.read_db(index)
+    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, _: &mut R) -> Result<V, OramError> {
+        Ok(self.read_db(index))
     }
 
-    fn write<R: RngCore + CryptoRng>(&mut self, index: Address, new_value: V, _: &mut R) -> V {
-        self.write_db(index, new_value)
+    fn write<R: RngCore + CryptoRng>(
+        &mut self,
+        index: Address,
+        new_value: V,
+        _: &mut R,
+    ) -> Result<V, OramError> {
+        Ok(self.write_db(index, new_value))
     }
 
     fn block_capacity(&self) -> Address {
@@ -129,10 +134,10 @@ impl<V: OramBlock> Oram<V> for database_type<V> {
         index: Address,
         callback: F,
         _: &mut R,
-    ) -> V {
+    ) -> Result<V, OramError> {
         let value = self.read_db(index);
         self.write_db(index, callback(&value));
-        value
+        Ok(value)
     }
 }
 
