@@ -17,7 +17,7 @@ use super::{
 use crate::{
     database::Database, path_oram::bitonic_sort::bitonic_sort_by_keys, BucketSize, OramBlock,
 };
-use std::ops::BitAnd;
+
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 #[derive(Debug)]
@@ -63,20 +63,18 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
             let block_level = block_position
                 .ct_common_ancestor_of_two_leaves(position)
                 .depth() as u64;
-            let block_level_bucket_full = level_counts[block_level as usize].ct_eq(&(Z as u64));
 
-            // If the bucket `block` should go in is full, assign the block to the overflow.
-            level_assignments[i].conditional_assign(
-                &(TreeIndex::MAX - 1),
-                block_level_bucket_full & !block_is_dummy,
-            );
-
-            // If not, obliviously scan through the buckets, assigning the block to the correct one.
-            // for level in 0..height as usize + 1 {
+            // Obliviously scan through the buckets, assigning the block to the correct one, or to the overflow.
             for (level, count) in level_counts.iter_mut().enumerate() {
+                let block_level_bucket_full: Choice = count.ct_eq(&(Z as u64));
                 let correct_level = level.ct_eq(&(block_level as usize));
-                let should_assign = correct_level & (!block_level_bucket_full) & (!block_is_dummy);
 
+                // If the bucket `block` should go in is full, assign the block to the overflow.
+                let should_overflow = correct_level & block_level_bucket_full & (!block_is_dummy);
+                level_assignments[i].conditional_assign(&(TreeIndex::MAX - 1), should_overflow);
+
+                // Otherwise, assign
+                let should_assign = correct_level & (!block_level_bucket_full) & (!block_is_dummy);
                 let level_count_incremented = *count + 1;
                 count.conditional_assign(&level_count_incremented, should_assign);
                 level_assignments[i].conditional_assign(&block_level, should_assign);
@@ -85,23 +83,17 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
 
         // Assign dummy blocks to the remaining non-full buckets until all buckets are full.
         for (i, block) in self.blocks.iter().enumerate() {
-            let mut found: Choice = 0.into();
-            let mut nonfull_bucket = 0;
+            let block_free = block.ct_is_dummy();
 
+            let mut assigned: Choice = 0.into();
             for (level, count) in level_counts.iter_mut().enumerate() {
                 let full = count.ct_eq(&(Z as u64));
-                let set_nonfull_bucket = (!found) & (!full);
-                found |= set_nonfull_bucket;
-                nonfull_bucket.conditional_assign(&(level as u64), set_nonfull_bucket);
+                let no_op = assigned | full | !block_free;
+
+                level_assignments[i].conditional_assign(&(level as u64), !no_op);
+                count.conditional_assign(&(*count + 1), !no_op);
+                assigned |= !no_op;
             }
-
-            let block_free = block.ct_is_dummy();
-            let assign_block_to_bucket = found.bitand(block_free);
-
-            level_assignments[i].conditional_assign(&nonfull_bucket, assign_block_to_bucket);
-            let level_count_incremented = level_counts[nonfull_bucket as usize] + 1;
-            level_counts[nonfull_bucket as usize]
-                .conditional_assign(&level_count_incremented, assign_block_to_bucket);
         }
 
         bitonic_sort_by_keys(&mut self.blocks, &mut level_assignments);
@@ -151,9 +143,8 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
 
     #[cfg(test)]
     fn occupancy(&self) -> StashSize {
-        // self.high_water_mark as usize
         let mut result = 0;
-        // for block in &self.blocks {
+
         for i in self.path_size..self.blocks.len() {
             if !self.blocks[i].is_dummy() {
                 result += 1;
