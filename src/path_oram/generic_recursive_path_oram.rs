@@ -8,6 +8,7 @@
 //! Contains an abstract implementation of Path ORAM with a recursive position map, that is generic over its stash data structure.
 
 use super::generic_path_oram::GenericPathOram;
+use super::position_map::PositionMap;
 use super::{address_oram_block::AddressOramBlock, stash::Stash, TreeIndex};
 use crate::{
     database::SimpleDatabase, linear_time_oram::LinearTimeOram, Address, BlockSize, BucketSize,
@@ -17,9 +18,11 @@ use log::debug;
 use rand::{CryptoRng, RngCore};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
+const RECURSION_THRESHOLD: usize = 1 << 12;
+
 /// A Path ORAM with a recursive position map, which is generic over its stash data structure.
 pub type BlockOram<const AB: BlockSize, V, const Z: BucketSize, S1, S2> =
-    GenericPathOram<V, Z, AddressOram<AB, Z, S1>, S2>;
+    GenericPathOram<V, Z, AB, AddressOram<AB, Z, S1>, S2>;
 
 impl<
         const AB: BlockSize,
@@ -42,9 +45,9 @@ pub enum AddressOram<
     S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
 > {
     /// A simple, linear-time `AddressOram`.
-    Base(LinearTimeOram<SimpleDatabase<TreeIndex>>),
+    Base(LinearTimeOram<SimpleDatabase<AddressOramBlock<AB>>>),
     /// A recursive `AddressOram` whose position map is also an `AddressOram`.
-    Recursive(Box<GenericPathOram<AddressOramBlock<AB>, Z, AddressOram<AB, Z, S>, S>>),
+    Recursive(Box<GenericPathOram<AddressOramBlock<AB>, Z, AB, AddressOram<AB, Z, S>, S>>),
 }
 
 impl<
@@ -74,22 +77,54 @@ impl<
     }
 }
 
-impl<const B: BlockSize, const Z: BucketSize, S: Stash<AddressOramBlock<B>> + std::fmt::Debug>
-    Oram<TreeIndex> for AddressOram<B, Z, S>
+impl<
+        const AB: BlockSize,
+        const Z: BucketSize,
+        S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
+    > PositionMap<AB> for AddressOram<AB, Z, S>
+{
+    fn write_position_block<R: RngCore + CryptoRng>(
+        &mut self,
+        address: Address,
+        position_block: AddressOramBlock<AB>,
+        rng: &mut R,
+    ) {
+        let address_of_block = AddressOram::<AB, Z, S>::address_of_block(address);
+
+        match self {
+            AddressOram::Base(linear_oram) => {
+                linear_oram.write(address_of_block, position_block, rng);
+            }
+
+            AddressOram::Recursive(block_oram) => {
+                block_oram.write(address_of_block, position_block, rng);
+            }
+        }
+    }
+}
+
+impl<
+        const AB: BlockSize,
+        const Z: BucketSize,
+        S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
+    > Oram<TreeIndex> for AddressOram<AB, Z, S>
 {
     fn new<R: CryptoRng + RngCore>(number_of_addresses: Address, rng: &mut R) -> Self {
         debug!(
             "Oram::new -- AddressOram(B = {}, Z = {}, C = {})",
-            B, Z, number_of_addresses
+            AB, Z, number_of_addresses
         );
 
-        assert!(B >= 2);
+        assert!(AB >= 2);
 
-        if number_of_addresses <= B {
-            Self::Base(LinearTimeOram::new(number_of_addresses, rng))
+        if number_of_addresses / AB <= RECURSION_THRESHOLD {
+            let mut block_capacity = number_of_addresses / AB;
+            if number_of_addresses % AB > 0 {
+                block_capacity += 1;
+            }
+            Self::Base(LinearTimeOram::new(block_capacity, rng))
         } else {
-            assert!(number_of_addresses % B == 0);
-            let block_capacity = number_of_addresses / B;
+            let block_capacity = number_of_addresses / AB;
             Self::Recursive(Box::new(GenericPathOram::new(block_capacity, rng)))
         }
     }
@@ -97,7 +132,7 @@ impl<const B: BlockSize, const Z: BucketSize, S: Stash<AddressOramBlock<B>> + st
     fn block_capacity(&self) -> Address {
         match self {
             AddressOram::Base(linear_oram) => linear_oram.block_capacity(),
-            AddressOram::Recursive(block_oram) => block_oram.block_capacity() * B,
+            AddressOram::Recursive(block_oram) => block_oram.block_capacity() * AB,
         }
     }
 
@@ -131,21 +166,28 @@ impl<const B: BlockSize, const Z: BucketSize, S: Stash<AddressOramBlock<B>> + st
 
     fn access<R: RngCore + CryptoRng, F: Fn(&TreeIndex) -> TreeIndex>(
         &mut self,
-        index: Address,
+        address: Address,
         callback: F,
         rng: &mut R,
     ) -> TreeIndex {
-        assert!(index < self.block_capacity());
+        let address_of_block = AddressOram::<AB, Z, S>::address_of_block(address);
+        let address_within_block = AddressOram::<AB, Z, S>::address_within_block(address);
 
-        let address_of_block = AddressOram::<B, Z, S>::address_of_block(index);
-        let address_within_block = AddressOram::<B, Z, S>::address_within_block(index);
+        let block_callback = |block: &AddressOramBlock<AB>| {
+            let mut result: AddressOramBlock<AB> = *block;
+            for i in 0..block.data.len() {
+                let index_matches = i.ct_eq(&address_within_block);
+                let position_to_write = callback(&block.data[i]);
+                result.data[i].conditional_assign(&position_to_write, index_matches);
+            }
+            result
+        };
 
         match self {
             // Base case: index into a linear-time ORAM.
             AddressOram::Base(linear_oram) => {
-                assert_eq!(0, address_of_block);
-                assert_eq!(index, address_within_block);
-                linear_oram.access(index, callback, rng)
+                let block = linear_oram.access(address_of_block, block_callback, rng);
+                block.data[address_within_block]
             }
 
             // Recursive case:
@@ -153,16 +195,6 @@ impl<const B: BlockSize, const Z: BucketSize, S: Stash<AddressOramBlock<B>> + st
             // (2) Recursively access the block at `address_of_block`, using a callback which updates only the address of interest in that block.
             // (3) Return the address of interest from the block.
             AddressOram::Recursive(block_oram) => {
-                let block_callback = |block: &AddressOramBlock<B>| {
-                    let mut result: AddressOramBlock<B> = *block;
-                    for i in 0..block.data.len() {
-                        let index_matches = i.ct_eq(&address_within_block);
-                        let position_to_write = callback(&block.data[i]);
-                        result.data[i].conditional_assign(&position_to_write, index_matches);
-                    }
-                    result
-                };
-
                 let block = block_oram.access(address_of_block, block_callback, rng);
 
                 let mut result = u64::default();

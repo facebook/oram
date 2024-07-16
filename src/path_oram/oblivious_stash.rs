@@ -17,6 +17,7 @@ use super::{
 use crate::{
     database::Database, path_oram::bitonic_sort::bitonic_sort_by_keys, BucketSize, OramBlock,
 };
+
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 #[derive(Debug)]
@@ -142,9 +143,8 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
 
     #[cfg(test)]
     fn occupancy(&self) -> StashSize {
-        // self.high_water_mark as usize
         let mut result = 0;
-        // for block in &self.blocks {
+
         for i in self.path_size..self.blocks.len() {
             if !self.blocks[i].is_dummy() {
                 result += 1;

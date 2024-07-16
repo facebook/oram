@@ -7,6 +7,9 @@
 
 //! This module contains benchmarks for the `oram` crate.
 
+// This allows me to work with a small, fast set of benchmarks (see #31).
+#![allow(dead_code)]
+
 extern crate criterion;
 use core::fmt;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
@@ -21,11 +24,8 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use oram::linear_time_oram::LinearTimeOram;
 use oram::path_oram::recursive_secure_path_oram::ConcreteObliviousBlockOram;
 
-const CAPACITIES_TO_BENCHMARK: [usize; 2] = [64, 256];
-
+const CAPACITIES_TO_BENCHMARK: [usize; 3] = [1 << 14, 1 << 16, 1 << 20];
 const NUM_RANDOM_OPERATIONS_TO_RUN: usize = 64;
-
-// All benchmarks are run for block sizes of 64 and 4096.
 
 trait Instrumented {
     fn get_read_count(&self) -> u128;
@@ -71,41 +71,56 @@ criterion_group!(
     name = benches;
     config = Criterion::default().warm_up_time(Duration::new(0, 1_000_000_00)).measurement_time(Duration::new(0, 1_000_000_00)).sample_size(10);
     targets =
-    benchmark_initialization::<64, BenchmarkLinearTimeOram<64>>,
-    benchmark_initialization::<4096, BenchmarkLinearTimeOram<4096>>,
-    benchmark_read::<64, BenchmarkLinearTimeOram<64>>,
     benchmark_read::<4096, BenchmarkLinearTimeOram<4096>>,
-    benchmark_write::<64, BenchmarkLinearTimeOram<64>>,
-    benchmark_write::<4096, BenchmarkLinearTimeOram<4096>>,
-    benchmark_random_operations::<64, BenchmarkLinearTimeOram<64>>,
-    benchmark_random_operations::<4096, BenchmarkLinearTimeOram<4096>>,
-    benchmark_initialization::<64, BenchmarkRecursiveSecurePathOram<64>>,
-    benchmark_initialization::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-    benchmark_read::<64, BenchmarkRecursiveSecurePathOram<64>>,
     benchmark_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-    benchmark_write::<64, BenchmarkRecursiveSecurePathOram<64>>,
-    benchmark_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-    benchmark_random_operations::<64, BenchmarkRecursiveSecurePathOram<64>>,
-    benchmark_random_operations::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+    benchmark_initialization::<4096, BenchmarkLinearTimeOram<4096>>,
+    benchmark_initialization::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
     print_read_header::<BenchmarkLinearTimeOram<0>>,
-    count_accesses_on_read::<64, BenchmarkLinearTimeOram<64>>,
     count_accesses_on_read::<4096, BenchmarkLinearTimeOram<4096>>,
-    print_write_header::<BenchmarkLinearTimeOram<0>>,
-    count_accesses_on_write::<64, BenchmarkLinearTimeOram<64>>,
-    count_accesses_on_write::<4096, BenchmarkLinearTimeOram<4096>>,
-    print_random_operations_header::<BenchmarkLinearTimeOram<0>>,
-    count_accesses_on_random_workload::<64, BenchmarkLinearTimeOram<64>>,
-    count_accesses_on_random_workload::<4096, BenchmarkLinearTimeOram<4096>>,
     print_read_header::<BenchmarkRecursiveSecurePathOram<0>>,
-    count_accesses_on_read::<64, BenchmarkRecursiveSecurePathOram<64>>,
     count_accesses_on_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-    print_write_header::<BenchmarkRecursiveSecurePathOram<0>>,
-    count_accesses_on_write::<64, BenchmarkRecursiveSecurePathOram<64>>,
-    count_accesses_on_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-    print_random_operations_header::<BenchmarkRecursiveSecurePathOram<0>>,
-    count_accesses_on_random_workload::<64, BenchmarkRecursiveSecurePathOram<64>>,
-    count_accesses_on_random_workload::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
 );
+// More comprehensive, slower benchmarks. TODO (#31) this organization should be more formal.
+// criterion_group!(
+//     name = benches;
+//     config = Criterion::default().warm_up_time(Duration::new(0, 1_000_000_00)).measurement_time(Duration::new(0, 1_000_000_00)).sample_size(10);
+//     targets =
+//     benchmark_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+//     benchmark_initialization::<64, BenchmarkLinearTimeOram<64>>,
+//     benchmark_initialization::<4096, BenchmarkLinearTimeOram<4096>>,
+//     benchmark_read::<64, BenchmarkLinearTimeOram<64>>,
+//     benchmark_read::<4096, BenchmarkLinearTimeOram<4096>>,
+//     benchmark_write::<64, BenchmarkLinearTimeOram<64>>,
+//     benchmark_write::<4096, BenchmarkLinearTimeOram<4096>>,
+//     benchmark_random_operations::<64, BenchmarkLinearTimeOram<64>>,
+//     benchmark_random_operations::<4096, BenchmarkLinearTimeOram<4096>>,
+//     benchmark_initialization::<64, BenchmarkRecursiveSecurePathOram<64>>,
+//     benchmark_initialization::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+//     benchmark_read::<64, BenchmarkRecursiveSecurePathOram<64>>,
+//     benchmark_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+//     benchmark_write::<64, BenchmarkRecursiveSecurePathOram<64>>,
+//     benchmark_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+//     benchmark_random_operations::<64, BenchmarkRecursiveSecurePathOram<64>>,
+//     benchmark_random_operations::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+//     print_read_header::<BenchmarkLinearTimeOram<0>>,
+//     count_accesses_on_read::<64, BenchmarkLinearTimeOram<64>>,
+//     count_accesses_on_read::<4096, BenchmarkLinearTimeOram<4096>>,
+//     print_write_header::<BenchmarkLinearTimeOram<0>>,
+//     count_accesses_on_write::<64, BenchmarkLinearTimeOram<64>>,
+//     count_accesses_on_write::<4096, BenchmarkLinearTimeOram<4096>>,
+//     print_random_operations_header::<BenchmarkLinearTimeOram<0>>,
+//     count_accesses_on_random_workload::<64, BenchmarkLinearTimeOram<64>>,
+//     count_accesses_on_random_workload::<4096, BenchmarkLinearTimeOram<4096>>,
+//     print_read_header::<BenchmarkRecursiveSecurePathOram<0>>,
+//     count_accesses_on_read::<64, BenchmarkRecursiveSecurePathOram<64>>,
+//     count_accesses_on_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+//     print_write_header::<BenchmarkRecursiveSecurePathOram<0>>,
+//     count_accesses_on_write::<64, BenchmarkRecursiveSecurePathOram<64>>,
+//     count_accesses_on_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+//     print_random_operations_header::<BenchmarkRecursiveSecurePathOram<0>>,
+//     count_accesses_on_random_workload::<64, BenchmarkRecursiveSecurePathOram<64>>,
+//     count_accesses_on_random_workload::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+// );
 criterion_main!(benches);
 
 fn count_accesses_on_operation<

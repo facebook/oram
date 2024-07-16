@@ -8,22 +8,29 @@
 //! Contains an abstract implementation of Path ORAM that is generic over its stash and position map data structures.
 
 use super::{
-    bucket::Bucket, stash::Stash, tree_index::CompleteBinaryTreeIndex, PathOramBlock, TreeHeight,
-    TreeIndex, MAXIMUM_TREE_HEIGHT,
+    bucket::Bucket, position_map::PositionMap, stash::Stash, tree_index::CompleteBinaryTreeIndex,
+    PathOramBlock, TreeHeight, TreeIndex, MAXIMUM_TREE_HEIGHT,
 };
 use crate::{
     database::{CountAccessesDatabase, Database},
+    path_oram::address_oram_block::AddressOramBlock,
     utils::{
         invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
     },
-    Address, BucketSize, Oram, OramBlock,
+    Address, BlockSize, BucketSize, Oram, OramBlock,
 };
 use rand::{CryptoRng, Rng};
 use std::mem;
 
 /// A Path ORAM which is generic over its stash and position map data structures.
 #[derive(Debug)]
-pub struct GenericPathOram<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex>, S: Stash<V>> {
+pub struct GenericPathOram<
+    V: OramBlock,
+    const Z: BucketSize,
+    const AB: BlockSize,
+    P: PositionMap<AB>,
+    S: Stash<V>,
+> {
     // The fields below are not meant to be exposed to clients. They are public for benchmarking and testing purposes.
     /// The underlying untrusted memory that the ORAM is obliviously accessing on behalf of its client.
     pub physical_memory: CountAccessesDatabase<Bucket<V, Z>>,
@@ -38,9 +45,10 @@ pub struct GenericPathOram<V: OramBlock, const Z: BucketSize, P: Oram<TreeIndex>
 impl<
         V: OramBlock,
         const Z: BucketSize,
-        P: Oram<TreeIndex> + std::fmt::Debug,
+        const AB: BlockSize,
+        P: PositionMap<AB> + std::fmt::Debug,
         S: Stash<V> + std::fmt::Debug,
-    > Oram<V> for GenericPathOram<V, Z, P, S>
+    > Oram<V> for GenericPathOram<V, Z, AB, P, S>
 {
     fn access<R: Rng + CryptoRng, F: Fn(&V) -> V>(
         &mut self,
@@ -90,7 +98,7 @@ impl<
         assert!(height <= MAXIMUM_TREE_HEIGHT);
 
         let path_size = Z * (height as usize + 1);
-        let stash = S::new(path_size, 64 - path_size);
+        let stash = S::new(path_size, 128 - path_size);
 
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
@@ -108,7 +116,7 @@ impl<
             random_permutation_of_0_through_n_exclusive(block_capacity as u64, rng);
         let addresses_to_slot_indices = invert_permutation_oblivious(&slot_indices_to_addresses);
         let slot_indices_to_addresses = to_usize_vec(slot_indices_to_addresses);
-        let addresses_to_slot_indices = to_usize_vec(addresses_to_slot_indices);
+        let mut addresses_to_slot_indices = to_usize_vec(addresses_to_slot_indices);
 
         let first_leaf_index = 2u64.pow(height) as usize;
         let last_leaf_index = (2 * first_leaf_index) - 1;
@@ -130,9 +138,22 @@ impl<
             physical_memory.write_db(leaf_index, bucket_to_write);
         }
 
-        for (address, slot_index) in addresses_to_slot_indices.iter().enumerate() {
-            let leaf_index = first_leaf_index + slot_index / 2;
-            position_map.write(address, leaf_index as u64, rng);
+        // The address block size might not divide the block capacity.
+        // If it doesn't, we will have one block that contains dummy values.
+        let mut num_blocks = block_capacity / AB;
+        if block_capacity % AB > 0 {
+            num_blocks += 1;
+            addresses_to_slot_indices.resize(block_capacity + AB, 0);
+        }
+
+        for block_index in 0..num_blocks {
+            let mut data = [0; AB];
+            for i in 0..AB {
+                data[i] = (first_leaf_index + addresses_to_slot_indices[block_index * AB + i] / 2)
+                    as TreeIndex;
+            }
+            let block = AddressOramBlock::<AB> { data };
+            position_map.write_position_block(block_index * AB, block, rng);
         }
 
         Self {

@@ -20,6 +20,7 @@ use crate::BlockSize;
 pub type ConcreteObliviousAddressOram<const AB: BlockSize, V> = GenericPathOram<
     V,
     DEFAULT_BLOCKS_PER_BUCKET,
+    AB,
     AddressOram<AB, DEFAULT_BLOCKS_PER_BUCKET, BitonicStash<AddressOramBlock<AB>>>,
     BitonicStash<V>,
 >;
