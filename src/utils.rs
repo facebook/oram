@@ -11,7 +11,6 @@ use crate::path_oram::bitonic_sort::bitonic_sort_by_keys;
 use rand::seq::SliceRandom;
 use rand::{CryptoRng, RngCore};
 
-// REVIEW NOTE: This function has already been reviewed.
 pub(crate) fn random_permutation_of_0_through_n_exclusive<R: RngCore + CryptoRng>(
     n: u64,
     rng: &mut R,
