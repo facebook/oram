@@ -13,7 +13,10 @@ use rand::rngs::OsRng;
 use rustyline::history::FileHistory;
 use rustyline::Editor;
 
-fn parse_number(prompt: &str, rl: &mut Editor<(), FileHistory>) -> Result<u64, Box<dyn std::error::Error>> {
+fn parse_number(
+    prompt: &str,
+    rl: &mut Editor<(), FileHistory>,
+) -> Result<u64, Box<dyn std::error::Error>> {
     Ok(loop {
         println!("{}", prompt);
         println!();
@@ -48,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Try again.");
                 continue;
             }
-            break action
+            break action;
         };
 
         let address = parse_number("What address?", &mut rl)?;
@@ -63,5 +66,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Wrote value {} to address {}.", value, address);
         }
     }
-
 }

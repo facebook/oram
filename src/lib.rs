@@ -8,12 +8,12 @@
 //! An implementation of the Path ORAM oblivious RAM protocol.
 //!
 //! ### Minimum Supported Rust Version
-//! 
+//!
 //! Rust **1.67.1** or higher. (TODO check!)
-//! 
+//!
 //! # Overview
-//! 
-//! Oblivious RAM is a protocol between a client and a store. 
+//!
+//! Oblivious RAM is a protocol between a client and a store.
 //! The client makes read(i) and write(i, data) requests via the ORAM protocol
 //! just as if it were interacting with a random access memory (RAM).
 //! The protocol makes read(i) and write(i, data) requests to the store
