@@ -50,7 +50,6 @@ pub enum AddressOram<
     /// A recursive `AddressOram` whose position map is also an `AddressOram`.
     Recursive(Box<GenericPathOram<AddressOramBlock<AB>, Z, AB, AddressOram<AB, Z, S>, S>>),
 }
-
 impl<
         const AB: BlockSize,
         const Z: BucketSize,
@@ -65,13 +64,11 @@ impl<
     }
 
     fn address_of_block(address: Address) -> Address {
-        assert!(AB.is_power_of_two());
         let block_address_bits = AB.ilog2();
         address >> block_address_bits
     }
 
     fn address_within_block(address: Address) -> Result<usize, OramError> {
-        assert!(AB.is_power_of_two());
         let block_address_bits = AB.ilog2();
         let shift: usize = (Address::BITS - block_address_bits).try_into()?;
         Ok(((address << shift) >> shift).try_into()?)
@@ -121,7 +118,9 @@ impl<
             AB, Z, number_of_addresses
         );
 
-        assert!(AB >= 2);
+        if (AB < 2) | (!AB.is_power_of_two()) {
+            return Err(OramError::InvalidConfigurationError);
+        }
 
         let ab_address: Address = AB.try_into()?;
         if number_of_addresses / ab_address <= RECURSION_THRESHOLD {

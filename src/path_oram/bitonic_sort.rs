@@ -23,7 +23,7 @@ pub(crate) fn bitonic_sort_by_keys<
     keys: &mut [K],
 ) {
     let n = items.len();
-    assert!(n.is_power_of_two());
+    assert!(n.is_power_of_two()); // This is already checked in oblivious stash initialization.
 
     let mut k = 2;
     while k <= n {

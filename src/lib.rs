@@ -37,15 +37,18 @@ pub trait OramBlock:
 {
 }
 
+/// A list of error types which are produced during ORAM protocol execution.
 #[derive(Error, Debug)]
-/// An Error type for errors occuring during ORAM operations.
 pub enum OramError {
     /// Errors arising from conversions between integer types.
     #[error("Arithmetic error encountered.")]
     IntegerConversionError(#[from] TryFromIntError),
-    /// Catchall error.
-    #[error("Unknown ORAM error")]
-    Unknown,
+    /// Errors arising from attempting to make an ORAM access to an invalid address.
+    #[error("Attempted to access an out-of-bounds ORAM address.")]
+    AddressOutOfBoundsError,
+    /// Errors arising from invalid parameters or configuration.
+    #[error("Invalid configuration.")]
+    InvalidConfigurationError,
 }
 
 /// Represents an oblivious RAM (ORAM) mapping `OramAddress` addresses to `V: OramBlock` values.

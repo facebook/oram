@@ -36,6 +36,9 @@ impl<V: OramBlock> BitonicStash<V> {
 impl<V: OramBlock> Stash<V> for BitonicStash<V> {
     fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, OramError> {
         let num_stash_blocks: usize = (path_size + overflow_size).try_into()?;
+        if !(num_stash_blocks.is_power_of_two()) {
+            return Err(OramError::InvalidConfigurationError);
+        }
         Ok(Self {
             blocks: vec![PathOramBlock::<V>::dummy(); num_stash_blocks],
             path_size,
