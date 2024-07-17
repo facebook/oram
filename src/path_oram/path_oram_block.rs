@@ -59,9 +59,8 @@ impl<V: OramBlock> OramBlock for PathOramBlock<V> {}
 impl<V: ConditionallySelectable> ConditionallySelectable for PathOramBlock<V> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let value = V::conditional_select(&a.value, &b.value, choice);
-        let address =
-            u64::conditional_select(&(a.address as u64), &(b.address as u64), choice) as usize;
-        let position = u64::conditional_select(&a.position, &b.position, choice);
+        let address = Address::conditional_select(&a.address, &b.address, choice);
+        let position = TreeIndex::conditional_select(&a.position, &b.position, choice);
         PathOramBlock::<V> {
             value,
             address,

@@ -19,7 +19,7 @@ use log::debug;
 use rand::{CryptoRng, RngCore};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
-const RECURSION_THRESHOLD: usize = 1 << 12;
+const RECURSION_THRESHOLD: u64 = 1 << 12;
 
 /// A Path ORAM with a recursive position map, which is generic over its stash data structure.
 pub type BlockOram<const AB: BlockSize, V, const Z: BucketSize, S1, S2> =
@@ -70,11 +70,11 @@ impl<
         address >> block_address_bits
     }
 
-    fn address_within_block(address: Address) -> Address {
+    fn address_within_block(address: Address) -> Result<usize, OramError> {
         assert!(AB.is_power_of_two());
         let block_address_bits = AB.ilog2();
-        let shift = (Address::BITS as usize) - (block_address_bits as usize);
-        (address << shift) >> shift
+        let shift: usize = (Address::BITS - block_address_bits).try_into()?;
+        Ok(((address << shift) >> shift).try_into()?)
     }
 }
 
@@ -123,14 +123,15 @@ impl<
 
         assert!(AB >= 2);
 
-        if number_of_addresses / AB <= RECURSION_THRESHOLD {
-            let mut block_capacity = number_of_addresses / AB;
-            if number_of_addresses % AB > 0 {
+        let ab_address: Address = AB.try_into()?;
+        if number_of_addresses / ab_address <= RECURSION_THRESHOLD {
+            let mut block_capacity = number_of_addresses / ab_address;
+            if number_of_addresses % ab_address > 0 {
                 block_capacity += 1;
             }
             Ok(Self::Base(LinearTimeOram::new(block_capacity, rng)?))
         } else {
-            let block_capacity = number_of_addresses / AB;
+            let block_capacity = number_of_addresses / ab_address;
             Ok(Self::Recursive(Box::new(GenericPathOram::new(
                 block_capacity,
                 rng,
@@ -138,10 +139,13 @@ impl<
         }
     }
 
-    fn block_capacity(&self) -> Address {
+    fn block_capacity(&self) -> Result<Address, OramError> {
         match self {
             AddressOram::Base(linear_oram) => linear_oram.block_capacity(),
-            AddressOram::Recursive(block_oram) => block_oram.block_capacity() * AB,
+            AddressOram::Recursive(block_oram) => {
+                let ab_address: Address = AB.try_into()?;
+                Ok(block_oram.block_capacity()? * ab_address)
+            }
         }
     }
 
@@ -184,7 +188,7 @@ impl<
         rng: &mut R,
     ) -> Result<TreeIndex, OramError> {
         let address_of_block = AddressOram::<AB, Z, S>::address_of_block(address);
-        let address_within_block = AddressOram::<AB, Z, S>::address_within_block(address);
+        let address_within_block = AddressOram::<AB, Z, S>::address_within_block(address)?;
 
         let block_callback = |block: &AddressOramBlock<AB>| {
             let mut result: AddressOramBlock<AB> = *block;

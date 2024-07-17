@@ -9,6 +9,8 @@
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
+use std::num::TryFromIntError;
+
 use rand::{CryptoRng, RngCore};
 use subtle::ConditionallySelectable;
 use thiserror::Error;
@@ -25,7 +27,7 @@ mod test_utils;
 /// The numeric type used to specify the size of an ORAM block in bytes.
 pub type BlockSize = usize;
 /// The numeric type used to specify the size of an ORAM in blocks, and to index into the ORAM.
-pub type Address = usize;
+pub type Address = u64;
 /// The numeric type used to specify the size of an ORAM bucket in blocks.
 pub type BucketSize = usize;
 
@@ -37,7 +39,14 @@ pub trait OramBlock:
 
 #[derive(Error, Debug)]
 /// An Error type for errors occuring during ORAM operations.
-pub enum OramError {}
+pub enum OramError {
+    /// Errors arising from conversions between integer types.
+    #[error("Arithmetic error encountered.")]
+    IntegerConversionError(#[from] TryFromIntError),
+    /// Catchall error.
+    #[error("Unknown ORAM error")]
+    Unknown,
+}
 
 /// Represents an oblivious RAM (ORAM) mapping `OramAddress` addresses to `V: OramBlock` values.
 /// `B` represents the size of each block of the ORAM in bytes.
@@ -50,7 +59,7 @@ where
         -> Result<Self, OramError>;
 
     /// Returns the capacity in blocks of this ORAM.
-    fn block_capacity(&self) -> Address;
+    fn block_capacity(&self) -> Result<Address, OramError>;
 
     /// Performs a (oblivious) ORAM access.
     /// Returns the value `v` previously stored at `index`, and writes `callback(v)` to `index`.

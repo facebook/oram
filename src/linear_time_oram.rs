@@ -23,7 +23,7 @@ pub struct LinearTimeOram<DB> {
 impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
     fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Result<Self, OramError> {
         Ok(Self {
-            physical_memory: DB::new(block_capacity),
+            physical_memory: DB::new(block_capacity)?,
         })
     }
 
@@ -34,9 +34,7 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
         _: &mut R,
     ) -> Result<V, OramError> {
         // TODO(#6): Handle malformed input in a more robust way.
-        let index_in_bounds: bool = (index as u128)
-            .ct_lt(&(self.block_capacity() as u128))
-            .into();
+        let index_in_bounds: bool = index.ct_lt(&self.block_capacity()?).into();
 
         // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not. See also Issue #6.
         assert!(index_in_bounds);
@@ -44,22 +42,23 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
         // This is a dummy value which will always be overwritten.
         let mut result = V::default();
 
-        for i in 0..self.block_capacity() {
-            let entry = self.physical_memory.read_db(i);
+        for i in 0..self.block_capacity()? {
+            let entry = self.physical_memory.read_db(i)?;
 
-            let is_requested_index = (i as Address).ct_eq(&index);
+            let is_requested_index = i.ct_eq(&index);
 
             result.conditional_assign(&entry, is_requested_index);
 
             let potentially_updated_value =
                 V::conditional_select(&entry, &callback(&entry), is_requested_index);
 
-            self.physical_memory.write_db(i, potentially_updated_value);
+            self.physical_memory
+                .write_db(i, potentially_updated_value)?;
         }
         Ok(result)
     }
 
-    fn block_capacity(&self) -> Address {
+    fn block_capacity(&self) -> Result<Address, OramError> {
         self.physical_memory.capacity()
     }
 }

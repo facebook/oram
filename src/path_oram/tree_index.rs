@@ -9,12 +9,20 @@
 
 use super::{TreeHeight, TreeIndex};
 use rand::{CryptoRng, Rng, RngCore};
-use std::mem::size_of;
+use static_assertions::const_assert_eq;
+use std::{mem::size_of, num::TryFromIntError};
 
-pub trait CompleteBinaryTreeIndex {
+const_assert_eq!(size_of::<TreeIndex>(), 8);
+pub trait CompleteBinaryTreeIndex
+where
+    Self: Sized,
+{
     fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self;
-    fn random_leaf<R: RngCore + CryptoRng>(tree_height: TreeHeight, rng: &mut R) -> Self;
-    fn depth(&self) -> TreeHeight;
+    fn random_leaf<R: RngCore + CryptoRng>(
+        tree_height: TreeHeight,
+        rng: &mut R,
+    ) -> Result<Self, TryFromIntError>;
+    fn ct_depth(&self) -> TreeHeight;
     fn is_leaf(&self, height: TreeHeight) -> bool;
     fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self;
 }
@@ -27,20 +35,24 @@ impl CompleteBinaryTreeIndex for TreeIndex {
         self >> shift
     }
 
-    fn random_leaf<R: RngCore + CryptoRng>(tree_height: TreeHeight, rng: &mut R) -> Self {
-        2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height))
+    fn random_leaf<R: RngCore + CryptoRng>(
+        tree_height: TreeHeight,
+        rng: &mut R,
+    ) -> Result<Self, TryFromIntError> {
+        let tree_height: u32 = tree_height.try_into()?;
+        Ok(2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height)))
     }
 
-    fn depth(&self) -> TreeHeight {
+    fn ct_depth(&self) -> TreeHeight {
         assert_ne!(*self, 0);
-        let leading_zeroes = self.leading_zeros();
-        let index_bitlength = 8 * (size_of::<TreeIndex>() as TreeHeight);
+        let leading_zeroes: u64 = self.leading_zeros().into();
+        let index_bitlength = 64;
         index_bitlength - leading_zeroes - 1
     }
 
     fn is_leaf(&self, height: TreeHeight) -> bool {
         assert_ne!(*self, 0);
-        self.depth() == height
+        self.ct_depth() == height
     }
 
     fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self {
