@@ -5,7 +5,22 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! An implementation of Oblivious RAM.
+//! An implementation of the Path ORAM oblivious RAM protocol.
+//!
+//! ### Minimum Supported Rust Version
+//! 
+//! Rust **1.67.1** or higher. (TODO check!)
+//! 
+//! # Overview
+//! 
+//! Oblivious RAM is a protocol between a client and a store. 
+//! The client makes read(i) and write(i, data) requests via the ORAM protocol
+//! just as if it were interacting with a random access memory (RAM).
+//! The protocol makes read(i) and write(i, data) requests to the store
+//! in order to service the client's requests,
+//! while guaranteeing that the sequence of requests seen by the store
+//! is independent of the sequence of requests made by the client
+//! (up to the length of the client request sequence).
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
