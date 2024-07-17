@@ -8,7 +8,7 @@
 //! A simple linear-time implementation of Oblivious RAM.
 
 use crate::database::Database;
-use crate::{Address, Oram, OramBlock, OramError};
+use crate::{Address, Oram, OramBlock, ProtocolError};
 use rand::{CryptoRng, RngCore};
 use subtle::{ConstantTimeEq, ConstantTimeLess};
 
@@ -21,7 +21,10 @@ pub struct LinearTimeOram<DB> {
 }
 
 impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
-    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Result<Self, OramError> {
+    fn new<R: RngCore + CryptoRng>(
+        block_capacity: Address,
+        _: &mut R,
+    ) -> Result<Self, ProtocolError> {
         Ok(Self {
             physical_memory: DB::new(block_capacity)?,
         })
@@ -32,12 +35,13 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
         index: Address,
         callback: F,
         _: &mut R,
-    ) -> Result<V, OramError> {
-        // TODO(#6): Handle malformed input in a more robust way.
+    ) -> Result<V, ProtocolError> {
         let index_in_bounds: bool = index.ct_lt(&self.block_capacity()?).into();
 
-        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not. See also Issue #6.
-        assert!(index_in_bounds);
+        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
+        if !index_in_bounds {
+            return Err(ProtocolError::AddressOutOfBoundsError);
+        }
 
         // This is a dummy value which will always be overwritten.
         let mut result = V::default();
@@ -58,7 +62,7 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
         Ok(result)
     }
 
-    fn block_capacity(&self) -> Result<Address, OramError> {
+    fn block_capacity(&self) -> Result<Address, ProtocolError> {
         self.physical_memory.capacity()
     }
 }

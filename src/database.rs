@@ -9,7 +9,7 @@
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
-use crate::{Address, Oram, OramBlock, OramError};
+use crate::{Address, Oram, OramBlock, ProtocolError};
 use duplicate::duplicate_item;
 use rand::{CryptoRng, RngCore};
 
@@ -19,13 +19,13 @@ where
     Self: Sized,
 {
     /// Returns a new `Database` filled with default values.
-    fn new(number_of_addresses: Address) -> Result<Self, OramError>;
+    fn new(number_of_addresses: Address) -> Result<Self, ProtocolError>;
     /// Returns the number of values stored by `self`.
-    fn capacity(&self) -> Result<Address, OramError>;
+    fn capacity(&self) -> Result<Address, ProtocolError>;
     /// Reads the value stored at `index`.
-    fn read_db(&mut self, index: Address) -> Result<V, OramError>;
+    fn read_db(&mut self, index: Address) -> Result<V, ProtocolError>;
     /// Writes the value stored at `index`.
-    fn write_db(&mut self, index: Address, value: V) -> Result<V, OramError>;
+    fn write_db(&mut self, index: Address, value: V) -> Result<V, ProtocolError>;
 }
 
 /// A simple Database that stores its data as a Vec.
@@ -33,20 +33,20 @@ where
 pub struct SimpleDatabase<V>(Vec<V>);
 
 impl<V: OramBlock> Database<V> for SimpleDatabase<V> {
-    fn new(number_of_addresses: Address) -> Result<Self, OramError> {
+    fn new(number_of_addresses: Address) -> Result<Self, ProtocolError> {
         Ok(Self(vec![V::default(); number_of_addresses.try_into()?]))
     }
 
-    fn capacity(&self) -> Result<Address, OramError> {
+    fn capacity(&self) -> Result<Address, ProtocolError> {
         Ok(self.0.len().try_into()?)
     }
 
-    fn read_db(&mut self, index: Address) -> Result<V, OramError> {
+    fn read_db(&mut self, index: Address) -> Result<V, ProtocolError> {
         let index: usize = index.try_into()?;
         Ok(self.0[index])
     }
 
-    fn write_db(&mut self, index: Address, value: V) -> Result<V, OramError> {
+    fn write_db(&mut self, index: Address, value: V) -> Result<V, ProtocolError> {
         let index: usize = index.try_into()?;
         let result = self.0[index];
         self.0[index] = value;
@@ -79,7 +79,7 @@ impl<V> CountAccessesDatabase<V> {
 }
 
 impl<V: OramBlock> Database<V> for CountAccessesDatabase<V> {
-    fn new(number_of_addresses: Address) -> Result<Self, OramError> {
+    fn new(number_of_addresses: Address) -> Result<Self, ProtocolError> {
         Ok(Self {
             data: Database::new(number_of_addresses)?,
             reads: vec![0u64; number_of_addresses.try_into()?],
@@ -87,21 +87,21 @@ impl<V: OramBlock> Database<V> for CountAccessesDatabase<V> {
         })
     }
 
-    fn read_db(&mut self, index: Address) -> Result<V, OramError> {
+    fn read_db(&mut self, index: Address) -> Result<V, ProtocolError> {
         log::debug!("Physical read -- {}", index);
 
         self.reads[usize::try_from(index)?] += 1;
         self.data.read_db(index)
     }
 
-    fn write_db(&mut self, index: Address, value: V) -> Result<V, OramError> {
+    fn write_db(&mut self, index: Address, value: V) -> Result<V, ProtocolError> {
         log::debug!("Physical write -- {}", index);
 
         self.writes[usize::try_from(index)?] += 1;
         self.data.write_db(index, value)
     }
 
-    fn capacity(&self) -> Result<Address, OramError> {
+    fn capacity(&self) -> Result<Address, ProtocolError> {
         self.data.capacity()
     }
 }
@@ -113,11 +113,18 @@ impl<V: OramBlock> Database<V> for CountAccessesDatabase<V> {
     [CountAccessesDatabase];
 )]
 impl<V: OramBlock> Oram<V> for database_type<V> {
-    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Result<Self, OramError> {
+    fn new<R: RngCore + CryptoRng>(
+        block_capacity: Address,
+        _: &mut R,
+    ) -> Result<Self, ProtocolError> {
         Database::new(block_capacity)
     }
 
-    fn read<R: RngCore + CryptoRng>(&mut self, index: Address, _: &mut R) -> Result<V, OramError> {
+    fn read<R: RngCore + CryptoRng>(
+        &mut self,
+        index: Address,
+        _: &mut R,
+    ) -> Result<V, ProtocolError> {
         self.read_db(index)
     }
 
@@ -126,11 +133,11 @@ impl<V: OramBlock> Oram<V> for database_type<V> {
         index: Address,
         new_value: V,
         _: &mut R,
-    ) -> Result<V, OramError> {
+    ) -> Result<V, ProtocolError> {
         self.write_db(index, new_value)
     }
 
-    fn block_capacity(&self) -> Result<Address, OramError> {
+    fn block_capacity(&self) -> Result<Address, ProtocolError> {
         Database::capacity(self)
     }
 
@@ -139,7 +146,7 @@ impl<V: OramBlock> Oram<V> for database_type<V> {
         index: Address,
         callback: F,
         _: &mut R,
-    ) -> Result<V, OramError> {
+    ) -> Result<V, ProtocolError> {
         let value = self.read_db(index)?;
         self.write_db(index, callback(&value))?;
         Ok(value)

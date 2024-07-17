@@ -11,6 +11,7 @@
 
 use std::num::TryFromIntError;
 
+use path_oram::TreeIndex;
 use rand::{CryptoRng, RngCore};
 use subtle::ConditionallySelectable;
 use thiserror::Error;
@@ -37,15 +38,36 @@ pub trait OramBlock:
 {
 }
 
+/// Represents an error in the internal operations of the library
 #[derive(Error, Debug)]
-/// An Error type for errors occuring during ORAM operations.
-pub enum OramError {
+pub enum InternalError {
+    /// Invalid tree index produced.
+    #[error("Invalid tree index {index} produced.")]
+    TreeIndexError {
+        /// The invalid tree index.
+        index: TreeIndex,
+    },
+    /// Invalid tree indexing operation.
+    #[error("Invalid tree indexing operation.")]
+    TreeIndexingError,
+}
+
+/// A list of error types which are produced during ORAM protocol execution
+#[derive(Error, Debug)]
+pub enum ProtocolError {
+    // TODO: this should be an internal error. Ask Kevin how to handle chaining of errors.
     /// Errors arising from conversions between integer types.
     #[error("Arithmetic error encountered.")]
     IntegerConversionError(#[from] TryFromIntError),
-    /// Catchall error.
-    #[error("Unknown ORAM error")]
-    Unknown,
+    /// Internal library error
+    #[error("Internal library error.")]
+    LibraryError(#[from] InternalError),
+    /// ORAM access to invalid address
+    #[error("Attempted to access an out-of-bounds ORAM address.")]
+    AddressOutOfBoundsError,
+    /// Errors having to do with parameters.
+    #[error("Invalid configuration.")]
+    InvalidConfigurationError,
 }
 
 /// Represents an oblivious RAM (ORAM) mapping `OramAddress` addresses to `V: OramBlock` values.
@@ -55,11 +77,13 @@ where
     Self: Sized,
 {
     /// Returns a new ORAM mapping addresses `0 <= address < block_capacity` to default `V` values.
-    fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R)
-        -> Result<Self, OramError>;
+    fn new<R: RngCore + CryptoRng>(
+        block_capacity: Address,
+        rng: &mut R,
+    ) -> Result<Self, ProtocolError>;
 
     /// Returns the capacity in blocks of this ORAM.
-    fn block_capacity(&self) -> Result<Address, OramError>;
+    fn block_capacity(&self) -> Result<Address, ProtocolError>;
 
     /// Performs a (oblivious) ORAM access.
     /// Returns the value `v` previously stored at `index`, and writes `callback(v)` to `index`.
@@ -68,14 +92,14 @@ where
         index: Address,
         callback: F,
         rng: &mut R,
-    ) -> Result<V, OramError>;
+    ) -> Result<V, ProtocolError>;
 
     /// Obliviously reads the value stored at `index`.
     fn read<R: RngCore + CryptoRng>(
         &mut self,
         index: Address,
         rng: &mut R,
-    ) -> Result<V, OramError> {
+    ) -> Result<V, ProtocolError> {
         log::debug!("ORAM read: {}", index);
         let callback = |x: &V| *x;
         self.access(index, callback, rng)
@@ -87,7 +111,7 @@ where
         index: Address,
         new_value: V,
         rng: &mut R,
-    ) -> Result<V, OramError> {
+    ) -> Result<V, ProtocolError> {
         log::debug!("ORAM write: {}", index);
         let callback = |_: &V| new_value;
         self.access(index, callback, rng)

@@ -7,32 +7,38 @@
 
 //! Tree index
 
+use crate::InternalError;
+
 use super::{TreeHeight, TreeIndex};
 use rand::{CryptoRng, Rng, RngCore};
+use static_assertions::const_assert_eq;
 use std::{mem::size_of, num::TryFromIntError};
 
-const _: () = assert!(size_of::<TreeIndex>() == 8);
+const_assert_eq!(size_of::<TreeIndex>(), 8);
 
 pub trait CompleteBinaryTreeIndex
 where
     Self: Sized,
 {
-    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self;
+    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Result<Self, InternalError>;
     fn random_leaf<R: RngCore + CryptoRng>(
         tree_height: TreeHeight,
         rng: &mut R,
     ) -> Result<Self, TryFromIntError>;
-    fn ct_depth(&self) -> TreeHeight;
-    fn is_leaf(&self, height: TreeHeight) -> bool;
-    fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self;
+    fn ct_depth(&self) -> Result<TreeHeight, InternalError>;
+    fn is_leaf(&self, height: TreeHeight) -> Result<bool, InternalError>;
+    fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Result<Self, InternalError>;
 }
 
 impl CompleteBinaryTreeIndex for TreeIndex {
-    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self {
-        assert_ne!(*self, 0);
-        assert!(self.is_leaf(height));
+    // A TreeIndex can have any nonzero value.
+    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Result<Self, InternalError> {
+        if (*self == 0) | (!self.is_leaf(height)?) {
+            return Err(InternalError::TreeIndexError { index: *self });
+        }
+
         let shift = height - depth;
-        self >> shift
+        Ok(self >> shift)
     }
 
     fn random_leaf<R: RngCore + CryptoRng>(
@@ -43,24 +49,37 @@ impl CompleteBinaryTreeIndex for TreeIndex {
         Ok(2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height)))
     }
 
-    fn ct_depth(&self) -> TreeHeight {
-        assert_ne!(*self, 0);
+    fn ct_depth(&self) -> Result<TreeHeight, InternalError> {
+        if *self == 0 {
+            return Err(InternalError::TreeIndexError { index: *self });
+        }
+
         let leading_zeroes: u64 = self.leading_zeros().into();
         let index_bitlength = 64;
-        index_bitlength - leading_zeroes - 1
+        Ok(index_bitlength - leading_zeroes - 1)
     }
 
-    fn is_leaf(&self, height: TreeHeight) -> bool {
-        assert_ne!(*self, 0);
-        self.ct_depth() == height
+    fn is_leaf(&self, height: TreeHeight) -> Result<bool, InternalError> {
+        if *self == 0 {
+            return Err(InternalError::TreeIndexError { index: *self });
+        }
+        Ok(self.ct_depth()? == height)
     }
 
-    fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self {
+    fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Result<Self, InternalError> {
         // The two inputs must be of the same height.
-        assert_eq!(self.leading_zeros(), other.leading_zeros());
+        if self.leading_zeros() != other.leading_zeros() {
+            return Err(InternalError::TreeIndexingError);
+        }
+
         let shared_prefix_length = (self ^ other).leading_zeros();
         let common_ancestor = self >> (Self::BITS - shared_prefix_length);
-        assert_ne!(common_ancestor, 0);
-        common_ancestor
+
+        if common_ancestor == 0 {
+            return Err(InternalError::TreeIndexError {
+                index: common_ancestor,
+            });
+        }
+        Ok(common_ancestor)
     }
 }

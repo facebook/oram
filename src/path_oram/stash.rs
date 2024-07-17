@@ -8,7 +8,7 @@
 //! A trait representing a Path ORAM stash.
 
 use super::{bucket::Bucket, TreeIndex};
-use crate::{database::Database, Address, BucketSize, OramBlock, OramError};
+use crate::{database::Database, Address, BucketSize, OramBlock, ProtocolError};
 
 /// Numeric type used to represent the size of a Path ORAM stash in blocks.
 pub type StashSize = u64;
@@ -19,26 +19,26 @@ where
     Self: Sized,
 {
     /// Creates a new stash capable of holding `capacity` blocks.
-    fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, OramError>;
+    fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, ProtocolError>;
     /// Read blocks from the path specified by the leaf `position` in the tree `physical_memory` of height `height`
     fn read_from_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
         &mut self,
         physical_memory: &mut T,
         position: TreeIndex,
-    ) -> Result<(), OramError>;
+    ) -> Result<(), ProtocolError>;
     /// Evict blocks from the stash to the path specified by the leaf `position` in the tree `physical_memory` of height `height`.
     fn write_to_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
         &mut self,
         physical_memory: &mut T,
         position: TreeIndex,
-    ) -> Result<(), OramError>;
+    ) -> Result<(), ProtocolError>;
     /// Obliviously scans the stash for a block `b` with address `address`; if found, replaces that block with `callback(b)`.
     fn access<F: Fn(&V) -> V>(
         &mut self,
         address: Address,
         new_position: TreeIndex,
         value_callback: F,
-    ) -> Result<V, OramError>;
+    ) -> Result<V, ProtocolError>;
 
     #[cfg(test)]
     /// The number of real (non-dummy) blocks in the stash.

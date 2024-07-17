@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{
     database::Database, path_oram::bitonic_sort::bitonic_sort_by_keys, BucketSize, OramBlock,
-    OramError,
+    ProtocolError,
 };
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
@@ -34,8 +34,11 @@ impl<V: OramBlock> BitonicStash<V> {
 }
 
 impl<V: OramBlock> Stash<V> for BitonicStash<V> {
-    fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, OramError> {
+    fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, ProtocolError> {
         let num_stash_blocks: usize = (path_size + overflow_size).try_into()?;
+        if !(num_stash_blocks.is_power_of_two()) {
+            return Err(ProtocolError::InvalidConfigurationError);
+        }
         Ok(Self {
             blocks: vec![PathOramBlock::<V>::dummy(); num_stash_blocks],
             path_size,
@@ -46,8 +49,8 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         &mut self,
         physical_memory: &mut T,
         position: super::TreeIndex,
-    ) -> Result<(), OramError> {
-        let height = position.ct_depth();
+    ) -> Result<(), ProtocolError> {
+        let height = position.ct_depth()?;
 
         let mut level_assignments = vec![TreeIndex::MAX; self.len()];
         let mut level_counts = vec![0; usize::try_from(height)? + 1];
@@ -62,8 +65,8 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
                 TreeIndex::conditional_select(&block.position, &an_arbitrary_leaf, block_is_dummy);
 
             let block_level: u64 = block_position
-                .ct_common_ancestor_of_two_leaves(position)
-                .ct_depth();
+                .ct_common_ancestor_of_two_leaves(position)?
+                .ct_depth()?;
 
             // Obliviously scan through the buckets, assigning the block to the correct one, or to the overflow.
             for (level, count) in level_counts.iter_mut().enumerate() {
@@ -109,7 +112,7 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
                 new_bucket.blocks[slot_number] = self.blocks[stash_index];
             }
 
-            physical_memory.write_db(position.node_on_path(depth, height), new_bucket)?;
+            physical_memory.write_db(position.node_on_path(depth, height)?, new_bucket)?;
         }
 
         Ok(())
@@ -120,7 +123,7 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         address: crate::Address,
         new_position: super::TreeIndex,
         value_callback: F,
-    ) -> Result<V, OramError> {
+    ) -> Result<V, ProtocolError> {
         let mut result: V = V::default();
 
         for block in &mut self.blocks {
@@ -159,11 +162,11 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         &mut self,
         physical_memory: &mut T,
         position: super::TreeIndex,
-    ) -> Result<(), OramError> {
-        let height = position.ct_depth();
+    ) -> Result<(), ProtocolError> {
+        let height = position.ct_depth()?;
 
         for i in (0..(self.path_size / u64::try_from(Z)?)).rev() {
-            let bucket_index = position.node_on_path(i, height);
+            let bucket_index = position.node_on_path(i, height)?;
             let bucket = physical_memory.read_db(bucket_index)?;
             for slot_index in 0..Z {
                 self.blocks[Z * (usize::try_from(i)?) + slot_index] = bucket.blocks[slot_index];

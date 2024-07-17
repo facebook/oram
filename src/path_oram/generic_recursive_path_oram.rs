@@ -10,7 +10,7 @@
 use super::generic_path_oram::GenericPathOram;
 use super::position_map::PositionMap;
 use super::{address_oram_block::AddressOramBlock, stash::Stash, TreeIndex};
-use crate::OramError;
+use crate::ProtocolError;
 use crate::{
     database::SimpleDatabase, linear_time_oram::LinearTimeOram, Address, BlockSize, BucketSize,
     Oram, OramBlock,
@@ -50,7 +50,6 @@ pub enum AddressOram<
     /// A recursive `AddressOram` whose position map is also an `AddressOram`.
     Recursive(Box<GenericPathOram<AddressOramBlock<AB>, Z, AB, AddressOram<AB, Z, S>, S>>),
 }
-
 impl<
         const AB: BlockSize,
         const Z: BucketSize,
@@ -65,13 +64,11 @@ impl<
     }
 
     fn address_of_block(address: Address) -> Address {
-        assert!(AB.is_power_of_two());
         let block_address_bits = AB.ilog2();
         address >> block_address_bits
     }
 
-    fn address_within_block(address: Address) -> Result<usize, OramError> {
-        assert!(AB.is_power_of_two());
+    fn address_within_block(address: Address) -> Result<usize, ProtocolError> {
         let block_address_bits = AB.ilog2();
         let shift: usize = (Address::BITS - block_address_bits).try_into()?;
         Ok(((address << shift) >> shift).try_into()?)
@@ -89,7 +86,7 @@ impl<
         address: Address,
         position_block: AddressOramBlock<AB>,
         rng: &mut R,
-    ) -> Result<(), OramError> {
+    ) -> Result<(), ProtocolError> {
         let address_of_block = AddressOram::<AB, Z, S>::address_of_block(address);
 
         match self {
@@ -115,13 +112,15 @@ impl<
     fn new<R: CryptoRng + RngCore>(
         number_of_addresses: Address,
         rng: &mut R,
-    ) -> Result<Self, OramError> {
+    ) -> Result<Self, ProtocolError> {
         debug!(
             "Oram::new -- AddressOram(B = {}, Z = {}, C = {})",
             AB, Z, number_of_addresses
         );
 
-        assert!(AB >= 2);
+        if (AB < 2) | (!AB.is_power_of_two()) {
+            return Err(ProtocolError::InvalidConfigurationError);
+        }
 
         let ab_address: Address = AB.try_into()?;
         if number_of_addresses / ab_address <= RECURSION_THRESHOLD {
@@ -139,7 +138,7 @@ impl<
         }
     }
 
-    fn block_capacity(&self) -> Result<Address, OramError> {
+    fn block_capacity(&self) -> Result<Address, ProtocolError> {
         match self {
             AddressOram::Base(linear_oram) => linear_oram.block_capacity(),
             AddressOram::Recursive(block_oram) => {
@@ -154,7 +153,7 @@ impl<
         &mut self,
         index: Address,
         rng: &mut R,
-    ) -> Result<TreeIndex, OramError> {
+    ) -> Result<TreeIndex, ProtocolError> {
         log::debug!(
             "Level {} AddressORAM read: {}",
             self.recursion_height(),
@@ -171,7 +170,7 @@ impl<
         index: Address,
         new_value: TreeIndex,
         rng: &mut R,
-    ) -> Result<TreeIndex, OramError> {
+    ) -> Result<TreeIndex, ProtocolError> {
         log::debug!(
             "Level {} AddressORAM write: {}",
             self.recursion_height(),
@@ -186,7 +185,7 @@ impl<
         address: Address,
         callback: F,
         rng: &mut R,
-    ) -> Result<TreeIndex, OramError> {
+    ) -> Result<TreeIndex, ProtocolError> {
         let address_of_block = AddressOram::<AB, Z, S>::address_of_block(address);
         let address_within_block = AddressOram::<AB, Z, S>::address_within_block(address)?;
 

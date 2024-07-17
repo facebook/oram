@@ -17,7 +17,7 @@ use crate::path_oram::bucket::Bucket;
 use crate::path_oram::generic_path_oram::GenericPathOram;
 use crate::path_oram::position_map::PositionMap;
 use crate::path_oram::stash::Stash;
-use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError};
+use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, ProtocolError};
 use duplicate::duplicate_item;
 use rand::{
     distributions::{Distribution, Standard},
@@ -184,13 +184,13 @@ macro_rules! monitor_boilerplate {
         fn new<R: rand::RngCore + rand::CryptoRng>(
             block_capacity: crate::Address,
             rng: &mut R,
-        ) -> Result<Self, OramError> {
+        ) -> Result<Self, ProtocolError> {
             Ok(Self {
                 oram: GenericPathOram::new(block_capacity, rng)?,
             })
         }
 
-        fn block_capacity(&self) -> Result<Address, OramError> {
+        fn block_capacity(&self) -> Result<Address, ProtocolError> {
             self.oram.block_capacity()
         }
     };
@@ -238,7 +238,7 @@ impl<
         index: crate::Address,
         callback: F,
         rng: &mut R,
-    ) -> Result<V, OramError> {
+    ) -> Result<V, ProtocolError> {
         let result = self.oram.access(index, callback, rng);
         let stash_size = self.oram.stash.occupancy();
         assert!(stash_size < 10);
@@ -271,7 +271,7 @@ impl<
         index: crate::Address,
         callback: F,
         rng: &mut R,
-    ) -> Result<V, OramError> {
+    ) -> Result<V, ProtocolError> {
         let result = self.oram.access(index, callback, rng);
 
         let stash_occupancy = self.oram.stash.occupancy();
@@ -310,7 +310,7 @@ impl<
         index: crate::Address,
         callback: F,
         rng: &mut R,
-    ) -> Result<V, OramError> {
+    ) -> Result<V, ProtocolError> {
         let pre_read_count = self.oram.physical_memory.get_read_count();
         let pre_write_count = self.oram.physical_memory.get_write_count();
 
@@ -352,7 +352,7 @@ macro_rules! create_statistics_test_for_oram_type {
             fn new<R: rand::RngCore + rand::CryptoRng>(
                 block_capacity: crate::Address,
                 rng: &mut R,
-            ) -> Result<Self, OramError> {
+            ) -> Result<Self, ProtocolError> {
                 let mut oram = GenericPathOram::new(block_capacity, rng).unwrap();
 
                 // Avoid counting reads and writes occurring during initialization
@@ -364,7 +364,7 @@ macro_rules! create_statistics_test_for_oram_type {
                 Ok(Self { oram })
             }
 
-            fn block_capacity(&self) -> Result<Address, OramError> {
+            fn block_capacity(&self) -> Result<Address, ProtocolError> {
                 self.oram.block_capacity()
             }
 
@@ -373,7 +373,7 @@ macro_rules! create_statistics_test_for_oram_type {
                 index: crate::Address,
                 callback: F,
                 rng: &mut R,
-            ) -> Result<V, OramError> {
+            ) -> Result<V, ProtocolError> {
                 self.oram.access(index, callback, rng)
             }
         }

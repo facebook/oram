@@ -9,7 +9,7 @@
 
 use super::{
     bucket::Bucket, position_map::PositionMap, stash::Stash, tree_index::CompleteBinaryTreeIndex,
-    PathOramBlock, TreeHeight, MAXIMUM_TREE_HEIGHT,
+    PathOramBlock, TreeHeight,
 };
 use crate::{
     database::{CountAccessesDatabase, Database},
@@ -17,7 +17,7 @@ use crate::{
     utils::{
         invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
     },
-    Address, BlockSize, BucketSize, Oram, OramBlock, OramError,
+    Address, BlockSize, BucketSize, InternalError, Oram, OramBlock, ProtocolError,
 };
 use rand::{CryptoRng, Rng};
 use std::mem;
@@ -55,16 +55,31 @@ impl<
         address: Address,
         callback: F,
         rng: &mut R,
-    ) -> Result<V, OramError> {
-        assert!(address < self.block_capacity()?);
+    ) -> Result<V, ProtocolError> {
+        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
+        if address > self.block_capacity()? {
+            return Err(ProtocolError::AddressOutOfBoundsError);
+        }
 
         // Get the position of the target block (with address `address`),
         // and update that block's position map entry to a fresh random position
         let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, rng)?;
-        assert_ne!(new_position, 0);
+
+        // Safe branch: only leaks in the event of a library bug.
+        if new_position == 0 {
+            return Err(ProtocolError::LibraryError(InternalError::TreeIndexError {
+                index: new_position,
+            }));
+        }
+
         let position = self.position_map.write(address, new_position, rng)?;
-        assert_ne!(position, 0);
-        assert!(position.is_leaf(self.height));
+
+        // Safe branch: only leaks in the event of a library bug.
+        if !position.is_leaf(self.height)? {
+            return Err(ProtocolError::LibraryError(InternalError::TreeIndexError {
+                index: position,
+            }));
+        }
 
         self.stash
             .read_from_path(&mut self.physical_memory, position)?;
@@ -81,7 +96,10 @@ impl<
         result
     }
 
-    fn new<R: Rng + CryptoRng>(block_capacity: Address, rng: &mut R) -> Result<Self, OramError> {
+    fn new<R: Rng + CryptoRng>(
+        block_capacity: Address,
+        rng: &mut R,
+    ) -> Result<Self, ProtocolError> {
         log::debug!(
             "Oram::new -- BlockOram(B = {}, Z = {}, C = {})",
             mem::size_of::<V>(),
@@ -89,13 +107,13 @@ impl<
             block_capacity
         );
 
-        assert!(block_capacity.is_power_of_two());
-        assert!(block_capacity > 1);
+        if !block_capacity.is_power_of_two() | (block_capacity <= 1) {
+            return Err(ProtocolError::InvalidConfigurationError);
+        }
 
         let number_of_nodes = block_capacity;
 
         let height: u64 = (block_capacity.ilog2() - 1).into();
-        assert!(height <= MAXIMUM_TREE_HEIGHT);
 
         let path_size = u64::try_from(Z)? * (height + 1);
         let stash = S::new(path_size, 128 - path_size)?;
@@ -165,7 +183,7 @@ impl<
         })
     }
 
-    fn block_capacity(&self) -> Result<Address, OramError> {
+    fn block_capacity(&self) -> Result<Address, ProtocolError> {
         self.physical_memory.capacity()
     }
 }

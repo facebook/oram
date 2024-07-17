@@ -9,7 +9,7 @@
 
 use rand::{CryptoRng, RngCore};
 
-use crate::{Address, BlockSize, Oram, OramError};
+use crate::{Address, BlockSize, Oram, ProtocolError};
 
 use super::{address_oram_block::AddressOramBlock, TreeIndex};
 
@@ -19,5 +19,5 @@ pub trait PositionMap<const AB: BlockSize>: Oram<TreeIndex> {
         address: Address,
         position_block: AddressOramBlock<AB>,
         rng: &mut R,
-    ) -> Result<(), OramError>;
+    ) -> Result<(), ProtocolError>;
 }

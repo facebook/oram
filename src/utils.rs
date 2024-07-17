@@ -8,7 +8,7 @@
 //! Utilities.
 
 use crate::path_oram::bitonic_sort::bitonic_sort_by_keys;
-use crate::OramError;
+use crate::ProtocolError;
 use rand::seq::SliceRandom;
 use rand::{CryptoRng, RngCore};
 
@@ -23,7 +23,7 @@ pub(crate) fn random_permutation_of_0_through_n_exclusive<R: RngCore + CryptoRng
     Vec::from(permuted_addresses)
 }
 
-pub(crate) fn invert_permutation_oblivious(permutation: &[u64]) -> Result<Vec<u64>, OramError> {
+pub(crate) fn invert_permutation_oblivious(permutation: &[u64]) -> Result<Vec<u64>, ProtocolError> {
     let n: u64 = permutation.len().try_into()?;
     let mut copied = permutation.to_owned();
     let mut result = Vec::from_iter(0u64..n);
@@ -31,7 +31,7 @@ pub(crate) fn invert_permutation_oblivious(permutation: &[u64]) -> Result<Vec<u6
     Ok(result)
 }
 
-pub(crate) fn to_usize_vec(source: Vec<u64>) -> Result<Vec<usize>, OramError> {
+pub(crate) fn to_usize_vec(source: Vec<u64>) -> Result<Vec<usize>, ProtocolError> {
     let mut result = Vec::new();
     for e in &source {
         let e: usize = (*e).try_into()?;

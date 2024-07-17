@@ -18,6 +18,7 @@ duplicate = "1"
 simplelog = "0.12"
 log = "0.4"
 thiserror = "1.0"
+static_assertions = "1.1"
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
