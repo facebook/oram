@@ -22,6 +22,7 @@ static_assertions = "1"
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
+rustyline = "14"
 
 [[bench]]
 name = "benchmark"
