@@ -39,6 +39,7 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         if !(num_stash_blocks.is_power_of_two()) {
             return Err(OramError::InvalidConfigurationError);
         }
+
         Ok(Self {
             blocks: vec![PathOramBlock::<V>::dummy(); num_stash_blocks],
             path_size,
