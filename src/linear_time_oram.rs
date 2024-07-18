@@ -33,11 +33,12 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
         callback: F,
         _: &mut R,
     ) -> Result<V, OramError> {
-        // TODO(#6): Handle malformed input in a more robust way.
         let index_in_bounds: bool = index.ct_lt(&self.block_capacity()?).into();
 
-        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not. See also Issue #6.
-        assert!(index_in_bounds);
+        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
+        if !index_in_bounds {
+            return Err(OramError::AddressOutOfBoundsError);
+        }
 
         // This is a dummy value which will always be overwritten.
         let mut result = V::default();

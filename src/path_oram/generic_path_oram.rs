@@ -9,7 +9,7 @@
 
 use super::{
     bucket::Bucket, position_map::PositionMap, stash::Stash, tree_index::CompleteBinaryTreeIndex,
-    PathOramBlock, TreeHeight, MAXIMUM_TREE_HEIGHT,
+    PathOramBlock, TreeHeight,
 };
 use crate::{
     database::{CountAccessesDatabase, Database},
@@ -56,14 +56,16 @@ impl<
         callback: F,
         rng: &mut R,
     ) -> Result<V, OramError> {
-        assert!(address < self.block_capacity()?);
+        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
+        if address > self.block_capacity()? {
+            return Err(OramError::AddressOutOfBoundsError);
+        }
 
         // Get the position of the target block (with address `address`),
         // and update that block's position map entry to a fresh random position
         let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, rng)?;
-        assert_ne!(new_position, 0);
         let position = self.position_map.write(address, new_position, rng)?;
-        assert_ne!(position, 0);
+
         assert!(position.is_leaf(self.height));
 
         self.stash
@@ -89,13 +91,13 @@ impl<
             block_capacity
         );
 
-        assert!(block_capacity.is_power_of_two());
-        assert!(block_capacity > 1);
+        if !block_capacity.is_power_of_two() | (block_capacity <= 1) {
+            return Err(OramError::InvalidConfigurationError);
+        }
 
         let number_of_nodes = block_capacity;
 
         let height: u64 = (block_capacity.ilog2() - 1).into();
-        assert!(height <= MAXIMUM_TREE_HEIGHT);
 
         let path_size = u64::try_from(Z)? * (height + 1);
         let stash = S::new(path_size, 128 - path_size)?;

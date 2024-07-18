@@ -13,6 +13,7 @@ use static_assertions::const_assert_eq;
 use std::{mem::size_of, num::TryFromIntError};
 
 const_assert_eq!(size_of::<TreeIndex>(), 8);
+
 pub trait CompleteBinaryTreeIndex
 where
     Self: Sized,
@@ -28,9 +29,13 @@ where
 }
 
 impl CompleteBinaryTreeIndex for TreeIndex {
+    // A TreeIndex can have any nonzero value.
     fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self {
+        // We maintain the invariant that all TreeIndex values are nonzero.
         assert_ne!(*self, 0);
+        // We only call this method when the receiver is a leaf.
         assert!(self.is_leaf(height));
+
         let shift = height - depth;
         self >> shift
     }
@@ -40,27 +45,38 @@ impl CompleteBinaryTreeIndex for TreeIndex {
         rng: &mut R,
     ) -> Result<Self, TryFromIntError> {
         let tree_height: u32 = tree_height.try_into()?;
-        Ok(2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height)))
+        let result = 2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height));
+        // The value we've just generated is at least the first summand, which is at least 1.
+        assert_ne!(result, 0);
+        Ok(result)
     }
 
     fn ct_depth(&self) -> TreeHeight {
+        // We maintain the invariant that all TreeIndex values are nonzero.
         assert_ne!(*self, 0);
+
         let leading_zeroes: u64 = self.leading_zeros().into();
         let index_bitlength = 64;
         index_bitlength - leading_zeroes - 1
     }
 
     fn is_leaf(&self, height: TreeHeight) -> bool {
+        // We maintain the invariant that all TreeIndex values are nonzero.
         assert_ne!(*self, 0);
+
         self.ct_depth() == height
     }
 
     fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self {
-        // The two inputs must be of the same height.
-        assert_eq!(self.leading_zeros(), other.leading_zeros());
+        // We only call this function on pairs of Path ORAM leaves, which have the same depth.
+        assert!(self.ct_depth() == other.ct_depth());
+
         let shared_prefix_length = (self ^ other).leading_zeros();
         let common_ancestor = self >> (Self::BITS - shared_prefix_length);
+
+        // Since the input leaves are nonzero, the output must also be nonzero.
         assert_ne!(common_ancestor, 0);
+
         common_ancestor
     }
 }
