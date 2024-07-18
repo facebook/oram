@@ -47,7 +47,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let capacity = parse_u64("Enter a power of two.", &mut rl)?;
 
     // Initialize a Path ORAM storing `capacity` u64s.
-    let mut oram = ConcreteObliviousBlockOram::<ADDRESS_BLOCK_SIZE, OramValue>::new(capacity, &mut rng)?;
+    let mut oram =
+        ConcreteObliviousBlockOram::<ADDRESS_BLOCK_SIZE, OramValue>::new(capacity, &mut rng)?;
 
     loop {
         let action = loop {
