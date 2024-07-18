@@ -5,7 +5,7 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! Blocks
+//! Implements a generic ORAM value `BlockValue` consisting of unstructured bytes.
 
 use crate::BlockSize;
 use crate::OramBlock;
@@ -14,6 +14,10 @@ use rand::{
     Rng,
 };
 use subtle::{Choice, ConditionallySelectable};
+
+impl OramBlock for u8 {}
+impl OramBlock for u16 {}
+impl OramBlock for u32 {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(align(64))]

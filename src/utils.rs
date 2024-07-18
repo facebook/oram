@@ -12,6 +12,7 @@ use crate::OramError;
 use rand::seq::SliceRandom;
 use rand::{CryptoRng, RngCore};
 
+/// Returns a random permutation of 0 through n.
 pub(crate) fn random_permutation_of_0_through_n_exclusive<R: RngCore + CryptoRng>(
     n: u64,
     rng: &mut R,
@@ -23,6 +24,7 @@ pub(crate) fn random_permutation_of_0_through_n_exclusive<R: RngCore + CryptoRng
     Vec::from(permuted_addresses)
 }
 
+/// Given a permutation, inverts it using oblivious (data-independent) operations.
 pub(crate) fn invert_permutation_oblivious(permutation: &[u64]) -> Result<Vec<u64>, OramError> {
     let n: u64 = permutation.len().try_into()?;
     let mut copied = permutation.to_owned();
@@ -31,6 +33,7 @@ pub(crate) fn invert_permutation_oblivious(permutation: &[u64]) -> Result<Vec<u6
     Ok(result)
 }
 
+/// Converts a `Vec<u64>` to a `Vec<usize>`.
 pub(crate) fn to_usize_vec(source: Vec<u64>) -> Result<Vec<usize>, OramError> {
     let mut result = Vec::new();
     for e in &source {

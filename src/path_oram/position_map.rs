@@ -5,7 +5,7 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! A trait representing a Path ORAM position map.
+//! Implements a trait `PositionMap` representing a Path ORAM position map data structure.
 
 use rand::{CryptoRng, RngCore};
 

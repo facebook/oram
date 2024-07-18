@@ -5,7 +5,7 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! A fixed-size, obliviously accessed stash implemented using oblivious sorting.
+//! Contains `BitonicStash`, a fixed-size, obliviously accessed Path ORAM stash data structure implemented using oblivious sorting.
 
 use super::{
     bucket::Bucket,
@@ -21,7 +21,7 @@ use crate::{
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 #[derive(Debug)]
-/// A fixed-size, obliviously accessed stash data structure implemented using oblivious sorting.
+/// A fixed-size, obliviously accessed Path ORAM stash data structure implemented using oblivious sorting.
 pub struct BitonicStash<V: OramBlock> {
     blocks: Vec<PathOramBlock<V>>,
     path_size: StashSize,
