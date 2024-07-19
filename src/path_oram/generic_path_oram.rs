@@ -7,7 +7,11 @@
 
 //! Contains an abstract implementation of Path ORAM that is generic over its stash and position map data structures.
 
-use super::{position_map::PositionMap, stash::Stash, Bucket, PathOramBlock};
+use super::{
+    position_map::PositionMap,
+    stash::{Stash, StashSize},
+    Bucket, PathOramBlock,
+};
 use crate::{
     database::{CountAccessesDatabase, Database},
     path_oram::AddressOramBlock,
@@ -19,6 +23,8 @@ use crate::{
 };
 use rand::{CryptoRng, Rng};
 use std::mem;
+
+const STASH_SIZE: StashSize = 128;
 
 /// A Path ORAM which is generic over its stash and position map data structures.
 #[derive(Debug)]
@@ -98,7 +104,7 @@ impl<
         let height: u64 = (block_capacity.ilog2() - 1).into();
 
         let path_size = u64::try_from(Z)? * (height + 1);
-        let stash = S::new(path_size, 128 - path_size)?;
+        let stash = S::new(path_size, STASH_SIZE - path_size)?;
 
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
