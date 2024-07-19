@@ -8,11 +8,10 @@
 //! An implementation of a Path ORAM with a recursive position map and obliviously accessed stash.
 
 use super::{
-    address_oram_block::AddressOramBlock,
     generic_path_oram::GenericPathOram,
     generic_recursive_path_oram::{AddressOram, BlockOram},
-    oblivious_stash::BitonicStash,
-    DEFAULT_BLOCKS_PER_BUCKET,
+    stash::BitonicStash,
+    AddressOramBlock, DEFAULT_BLOCKS_PER_BUCKET,
 };
 use crate::BlockSize;
 
@@ -43,7 +42,7 @@ pub type DefaultPathOram<V> = BlockOram<
 #[cfg(test)]
 mod address_oram_tests {
     use super::*;
-    use crate::{block_value::*, path_oram::generic_path_oram::*, *};
+    use crate::{path_oram::generic_path_oram::*, *};
     use crate::{test_utils::*, OramBlock};
     use core::iter::zip;
 
@@ -74,7 +73,6 @@ mod address_oram_tests {
 
 #[cfg(test)]
 mod block_oram_tests {
-    use crate::block_value::BlockValue;
     use crate::path_oram::*;
     use crate::test_utils::*;
     use crate::*;

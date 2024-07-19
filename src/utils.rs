@@ -7,10 +7,127 @@
 
 //! Utilities.
 
-use crate::path_oram::bitonic_sort::bitonic_sort_by_keys;
-use crate::OramError;
+use crate::{OramBlock, OramError};
 use rand::seq::SliceRandom;
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng, RngCore};
+
+use subtle::{
+    Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeGreater, ConstantTimeLess,
+};
+
+use static_assertions::const_assert_eq;
+use std::{mem::size_of, num::TryFromIntError};
+
+pub(crate) type TreeIndex = u64;
+pub(crate) type TreeHeight = u64;
+
+impl OramBlock for TreeIndex {}
+
+const_assert_eq!(size_of::<TreeIndex>(), 8);
+
+pub(crate) trait CompleteBinaryTreeIndex
+where
+    Self: Sized,
+{
+    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self;
+    fn random_leaf<R: RngCore + CryptoRng>(
+        tree_height: TreeHeight,
+        rng: &mut R,
+    ) -> Result<Self, TryFromIntError>;
+    fn ct_depth(&self) -> TreeHeight;
+    fn is_leaf(&self, height: TreeHeight) -> bool;
+    fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self;
+}
+
+impl CompleteBinaryTreeIndex for TreeIndex {
+    // A TreeIndex can have any nonzero value.
+    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self {
+        // We maintain the invariant that all TreeIndex values are nonzero.
+        assert_ne!(*self, 0);
+        // We only call this method when the receiver is a leaf.
+        assert!(self.is_leaf(height));
+
+        let shift = height - depth;
+        self >> shift
+    }
+
+    fn random_leaf<R: RngCore + CryptoRng>(
+        tree_height: TreeHeight,
+        rng: &mut R,
+    ) -> Result<Self, TryFromIntError> {
+        let tree_height: u32 = tree_height.try_into()?;
+        let result = 2u64.pow(tree_height) + rng.gen_range(0..2u64.pow(tree_height));
+        // The value we've just generated is at least the first summand, which is at least 1.
+        assert_ne!(result, 0);
+        Ok(result)
+    }
+
+    fn ct_depth(&self) -> TreeHeight {
+        // We maintain the invariant that all TreeIndex values are nonzero.
+        assert_ne!(*self, 0);
+
+        let leading_zeroes: u64 = self.leading_zeros().into();
+        let index_bitlength = 64;
+        index_bitlength - leading_zeroes - 1
+    }
+
+    fn is_leaf(&self, height: TreeHeight) -> bool {
+        // We maintain the invariant that all TreeIndex values are nonzero.
+        assert_ne!(*self, 0);
+
+        self.ct_depth() == height
+    }
+
+    fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self {
+        // We only call this function on pairs of Path ORAM leaves, which have the same depth.
+        assert!(self.ct_depth() == other.ct_depth());
+
+        let shared_prefix_length = (self ^ other).leading_zeros();
+        let common_ancestor = self >> (Self::BITS - shared_prefix_length);
+
+        // Since the input leaves are nonzero, the output must also be nonzero.
+        assert_ne!(common_ancestor, 0);
+
+        common_ancestor
+    }
+}
+
+/// Sorts `items` in ascending order of `keys`, obliviously and in constant time.
+/// Assumes that `items.len()` is a power of two and that `keys.len() == items.len()`.
+/// The algorithm is a non-recursive version of bitonic sort based on
+/// pseudocode from [Wikipedia](https://en.wikipedia.org/wiki/Bitonic_sorter#Example_code).
+pub(crate) fn bitonic_sort_by_keys<
+    T: ConditionallySelectable,
+    K: Ord + ConditionallySelectable + ConstantTimeGreater + ConstantTimeLess,
+>(
+    items: &mut [T],
+    keys: &mut [K],
+) {
+    let n = items.len();
+    assert!(n.is_power_of_two()); // This is already checked in oblivious stash initialization.
+
+    let mut k = 2;
+    while k <= n {
+        let mut j = k / 2;
+        while j > 0 {
+            for i in 0..n {
+                let l = i ^ j;
+                if l > i {
+                    let ik0: Choice = (i & k).ct_eq(&0);
+                    let igtl: Choice = keys[i].ct_gt(&keys[l]);
+                    let iltl: Choice = keys[i].ct_lt(&keys[l]);
+                    let do_swap = (ik0 & igtl) | ((!ik0) & iltl);
+                    let (items_i, items_l) = items.split_at_mut(i + 1);
+                    T::conditional_swap(&mut items_i[i], &mut items_l[l - (i + 1)], do_swap);
+                    let (keys_i, keys_l) = keys.split_at_mut(i + 1);
+                    K::conditional_swap(&mut keys_i[i], &mut keys_l[l - (i + 1)], do_swap);
+                }
+            }
+            j /= 2;
+        }
+        k *= 2;
+    }
+}
 
 /// Returns a random permutation of 0 through n.
 pub(crate) fn random_permutation_of_0_through_n_exclusive<R: RngCore + CryptoRng>(
@@ -47,7 +164,10 @@ pub(crate) fn to_usize_vec(source: Vec<u64>) -> Result<Vec<usize>, OramError> {
 mod tests {
     use rand::{rngs::StdRng, SeedableRng};
 
-    use super::{invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive};
+    use super::{
+        bitonic_sort_by_keys, invert_permutation_oblivious,
+        random_permutation_of_0_through_n_exclusive,
+    };
 
     #[test]
     fn test_invert_permutation_oblivious() {
@@ -57,6 +177,24 @@ mod tests {
         let inverse = invert_permutation_oblivious(&permutation).unwrap();
         for i in 0..n {
             assert_eq!(i, inverse[permutation[i as usize] as usize]);
+        }
+    }
+
+    #[test]
+    fn test_bitonic_sort() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let mut items: Vec<u64> = Vec::new();
+        let mut keys: Vec<u64> = Vec::new();
+        let n = 128;
+        for e in random_permutation_of_0_through_n_exclusive(n, &mut rng) {
+            items.push(e as u64);
+            keys.push((e + (2 * n)) as u64);
+        }
+
+        bitonic_sort_by_keys(&mut items, &mut keys);
+        for i in 0..(items.len() - 1) {
+            assert!(keys[i] <= keys[i + 1]);
+            assert_eq!(keys[i], items[i] + (2 * (n as u64)));
         }
     }
 }

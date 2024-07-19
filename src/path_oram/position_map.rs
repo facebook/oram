@@ -9,9 +9,9 @@
 
 use rand::{CryptoRng, RngCore};
 
-use crate::{Address, BlockSize, Oram, OramError};
+use crate::{utils::TreeIndex, Address, BlockSize, Oram, OramError};
 
-use super::{address_oram_block::AddressOramBlock, TreeIndex};
+use super::AddressOramBlock;
 
 pub trait PositionMap<const AB: BlockSize>: Oram<TreeIndex> {
     fn write_position_block<R: RngCore + CryptoRng>(
