@@ -24,7 +24,7 @@ use crate::{
 use rand::{CryptoRng, Rng};
 use std::mem;
 
-const STASH_SIZE: StashSize = 128;
+const OVERFLOW_SIZE: StashSize = 40;
 
 /// A Path ORAM which is generic over its stash and position map data structures.
 #[derive(Debug)]
@@ -104,7 +104,7 @@ impl<
         let height: u64 = (block_capacity.ilog2() - 1).into();
 
         let path_size = u64::try_from(Z)? * (height + 1);
-        let stash = S::new(path_size, STASH_SIZE - path_size)?;
+        let stash = S::new(path_size, OVERFLOW_SIZE)?;
 
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
