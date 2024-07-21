@@ -5,26 +5,65 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! Implementations of Path ORAM.
+//! Block and bucket structures for Path ORAM.
+
+use crate::{BlockSize, OramBlock};
+use subtle::{Choice, ConditionallySelectable};
+
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 
 use crate::BucketSize;
+
+use crate::{utils::TreeIndex, Address};
+use subtle::ConstantTimeEq;
 
 /// The parameter "Z" from the Path ORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
 /// Here we adopt the more conservative setting of 4.
 pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSize = 4;
 
-pub use stash::Stash;
+// REVIEW NOTE: the rest of this module is not new code. It was moved from lib.rs and path_oram/mod.rs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(align(64))]
+/// An `OramBlock` consisting of unstructured bytes.
+pub struct BlockValue<const B: BlockSize>([u8; B]);
 
-pub(crate) mod generic_path_oram;
-pub(crate) mod generic_recursive_path_oram;
-pub(crate) mod position_map;
-pub mod recursive_secure_path_oram;
-pub(crate) mod stash;
+impl<const B: BlockSize> BlockValue<B> {
+    /// Instantiates a `BlockValue` from an array of `BLOCK_SIZE` bytes.
+    pub fn new(data: [u8; B]) -> Self {
+        Self(data)
+    }
+}
 
-use crate::{utils::TreeIndex, Address, BlockSize, OramBlock};
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
+impl<const B: BlockSize> Default for BlockValue<B> {
+    fn default() -> Self {
+        BlockValue::<B>([0u8; B])
+    }
+}
 
-use rand::distributions::{Distribution, Standard};
+impl<const B: BlockSize> OramBlock for BlockValue<B> {}
+
+impl<const B: BlockSize> ConditionallySelectable for BlockValue<B> {
+    fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
+        let mut result = BlockValue::default();
+        for i in 0..B {
+            result.0[i] = u8::conditional_select(&a.0[i], &b.0[i], choice);
+        }
+        result
+    }
+}
+
+impl<const B: BlockSize> Distribution<BlockValue<B>> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue<B> {
+        let mut result = BlockValue::default();
+        for i in 0..B {
+            result.0[i] = rng.gen();
+        }
+        result
+    }
+}
 
 #[derive(Clone, Copy, Default, PartialEq)]
 /// A Path ORAM block combines an `OramBlock` V with two metadata fields; its ORAM `address` and its `position` in the tree.
@@ -88,18 +127,18 @@ impl<V: ConditionallySelectable> ConditionallySelectable for PathOramBlock<V> {
 #[repr(align(64))]
 #[derive(Clone, Copy, PartialEq, Debug)]
 /// An `OramBlock` storing addresses, intended for use in a position map ORAM.
-pub struct AddressOramBlock<const B: BlockSize> {
+pub struct PositionBlock<const B: BlockSize> {
     /// The Path ORAM positions stored in this block.
     pub data: [TreeIndex; B],
 }
 
-impl<const B: BlockSize> Default for AddressOramBlock<B> {
+impl<const B: BlockSize> Default for PositionBlock<B> {
     fn default() -> Self {
         Self { data: [0; B] }
     }
 }
 
-impl<const B: BlockSize> ConditionallySelectable for AddressOramBlock<B> {
+impl<const B: BlockSize> ConditionallySelectable for PositionBlock<B> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let mut result = Self::default();
         for i in 0..B {
@@ -109,9 +148,9 @@ impl<const B: BlockSize> ConditionallySelectable for AddressOramBlock<B> {
     }
 }
 
-impl<const B: BlockSize> Distribution<AddressOramBlock<B>> for Standard {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> AddressOramBlock<B> {
-        let mut result: AddressOramBlock<B> = AddressOramBlock::default();
+impl<const B: BlockSize> Distribution<PositionBlock<B>> for Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PositionBlock<B> {
+        let mut result: PositionBlock<B> = PositionBlock::default();
         for i in 0..B {
             result.data[i] = rng.gen();
         }
@@ -119,7 +158,7 @@ impl<const B: BlockSize> Distribution<AddressOramBlock<B>> for Standard {
     }
 }
 
-impl<const B: BlockSize> OramBlock for AddressOramBlock<B> {}
+impl<const B: BlockSize> OramBlock for PositionBlock<B> {}
 
 #[repr(align(4096))]
 #[derive(Clone, Copy, PartialEq)]

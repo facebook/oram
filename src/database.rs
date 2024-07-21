@@ -147,7 +147,7 @@ impl<V: OramBlock> Oram<V> for database_type<V> {
 #[cfg(test)]
 mod tests {
     use super::{CountAccessesDatabase, Database, SimpleDatabase};
-    use crate::{test_utils::*, BlockSize, BlockValue};
+    use crate::{bucket::BlockValue, test_utils::*, BlockSize};
     use std::mem;
 
     #[test]

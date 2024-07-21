@@ -5,11 +5,10 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! Contains an abstract implementation of Path ORAM with a recursive position map, that is generic over its stash data structure.
+//! A recursive Path ORAM position map data structure.
 
-use super::generic_path_oram::GenericPathOram;
-use super::position_map::PositionMap;
-use super::{stash::Stash, AddressOramBlock};
+use super::path_oram::PathOram;
+use crate::bucket::PositionBlock;
 use crate::OramError;
 use crate::{
     database::SimpleDatabase, linear_time_oram::LinearTimeOram, utils::TreeIndex, Address,
@@ -21,45 +20,25 @@ use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 const RECURSION_THRESHOLD: u64 = 1 << 12;
 
-/// A Path ORAM with a recursive position map, which is generic over its stash data structure.
-pub type BlockOram<const AB: BlockSize, V, const Z: BucketSize, S1, S2> =
-    GenericPathOram<V, Z, AB, AddressOram<AB, Z, S1>, S2>;
-
-impl<
-        const AB: BlockSize,
-        V: OramBlock,
-        const Z: BucketSize,
-        S1: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
-        S2: Stash<V>,
-    > BlockOram<AB, V, Z, S1, S2>
-{
+impl<const AB: BlockSize, V: OramBlock, const Z: BucketSize> PathOram<V, Z, AB> {
     pub(crate) fn recursion_height(&self) -> usize {
         self.position_map.recursion_height()
     }
 }
 
-/// An `Oram` intended for use as a position map. `AB` is the number of addresses stored in each ORAM block.
+/// A recursive Path ORAM position map data structure. `AB` is the number of addresses stored in each ORAM block.
 #[derive(Debug)]
-pub enum AddressOram<
-    const AB: BlockSize,
-    const Z: BucketSize,
-    S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
-> {
+pub enum PositionMap<const AB: BlockSize, const Z: BucketSize> {
     /// A simple, linear-time `AddressOram`.
-    Base(LinearTimeOram<SimpleDatabase<AddressOramBlock<AB>>>),
+    Base(LinearTimeOram<SimpleDatabase<PositionBlock<AB>>>),
     /// A recursive `AddressOram` whose position map is also an `AddressOram`.
-    Recursive(Box<GenericPathOram<AddressOramBlock<AB>, Z, AB, AddressOram<AB, Z, S>, S>>),
+    Recursive(Box<PathOram<PositionBlock<AB>, Z, AB>>),
 }
-impl<
-        const AB: BlockSize,
-        const Z: BucketSize,
-        S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
-    > AddressOram<AB, Z, S>
-{
+impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
     pub(crate) fn recursion_height(&self) -> usize {
         match self {
-            AddressOram::Base(_) => 0,
-            AddressOram::Recursive(inner) => 1 + inner.recursion_height(),
+            PositionMap::Base(_) => 0,
+            PositionMap::Recursive(inner) => 1 + inner.recursion_height(),
         }
     }
 
@@ -75,26 +54,21 @@ impl<
     }
 }
 
-impl<
-        const AB: BlockSize,
-        const Z: BucketSize,
-        S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
-    > PositionMap<AB> for AddressOram<AB, Z, S>
-{
-    fn write_position_block<R: RngCore + CryptoRng>(
+impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
+    pub fn write_position_block<R: RngCore + CryptoRng>(
         &mut self,
         address: Address,
-        position_block: AddressOramBlock<AB>,
+        position_block: PositionBlock<AB>,
         rng: &mut R,
     ) -> Result<(), OramError> {
-        let address_of_block = AddressOram::<AB, Z, S>::address_of_block(address);
+        let address_of_block = PositionMap::<AB, Z>::address_of_block(address);
 
         match self {
-            AddressOram::Base(linear_oram) => {
+            PositionMap::Base(linear_oram) => {
                 linear_oram.write(address_of_block, position_block, rng)?;
             }
 
-            AddressOram::Recursive(block_oram) => {
+            PositionMap::Recursive(block_oram) => {
                 block_oram.write(address_of_block, position_block, rng)?;
             }
         }
@@ -103,12 +77,7 @@ impl<
     }
 }
 
-impl<
-        const AB: BlockSize,
-        const Z: BucketSize,
-        S: Stash<AddressOramBlock<AB>> + std::fmt::Debug,
-    > Oram<TreeIndex> for AddressOram<AB, Z, S>
-{
+impl<const AB: BlockSize, const Z: BucketSize> Oram<TreeIndex> for PositionMap<AB, Z> {
     fn new<R: CryptoRng + RngCore>(
         number_of_addresses: Address,
         rng: &mut R,
@@ -131,7 +100,7 @@ impl<
             Ok(Self::Base(LinearTimeOram::new(block_capacity, rng)?))
         } else {
             let block_capacity = number_of_addresses / ab_address;
-            Ok(Self::Recursive(Box::new(GenericPathOram::new(
+            Ok(Self::Recursive(Box::new(PathOram::new(
                 block_capacity,
                 rng,
             )?)))
@@ -140,8 +109,8 @@ impl<
 
     fn block_capacity(&self) -> Result<Address, OramError> {
         match self {
-            AddressOram::Base(linear_oram) => linear_oram.block_capacity(),
-            AddressOram::Recursive(block_oram) => {
+            PositionMap::Base(linear_oram) => linear_oram.block_capacity(),
+            PositionMap::Recursive(block_oram) => {
                 let ab_address: Address = AB.try_into()?;
                 Ok(block_oram.block_capacity()? * ab_address)
             }
@@ -186,11 +155,11 @@ impl<
         callback: F,
         rng: &mut R,
     ) -> Result<TreeIndex, OramError> {
-        let address_of_block = AddressOram::<AB, Z, S>::address_of_block(address);
-        let address_within_block = AddressOram::<AB, Z, S>::address_within_block(address)?;
+        let address_of_block = PositionMap::<AB, Z>::address_of_block(address);
+        let address_within_block = PositionMap::<AB, Z>::address_within_block(address)?;
 
-        let block_callback = |block: &AddressOramBlock<AB>| {
-            let mut result: AddressOramBlock<AB> = *block;
+        let block_callback = |block: &PositionBlock<AB>| {
+            let mut result: PositionBlock<AB> = *block;
             for i in 0..block.data.len() {
                 let index_matches = i.ct_eq(&address_within_block);
                 let position_to_write = callback(&block.data[i]);
@@ -201,7 +170,7 @@ impl<
 
         match self {
             // Base case: index into a linear-time ORAM.
-            AddressOram::Base(linear_oram) => {
+            PositionMap::Base(linear_oram) => {
                 let block = linear_oram.access(address_of_block, block_callback, rng)?;
                 Ok(block.data[address_within_block])
             }
@@ -210,7 +179,7 @@ impl<
             // (1) split the address into an ORAM address (`address_of_block`) and an offset within the block (`address_within_block`)
             // (2) Recursively access the block at `address_of_block`, using a callback which updates only the address of interest in that block.
             // (3) Return the address of interest from the block.
-            AddressOram::Recursive(block_oram) => {
+            PositionMap::Recursive(block_oram) => {
                 let block = block_oram.access(address_of_block, block_callback, rng)?;
 
                 let mut result = u64::default();

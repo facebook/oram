@@ -17,12 +17,13 @@ use oram::database::CountAccessesDatabase;
 use std::fmt::Display;
 use std::time::Duration;
 
+use oram::bucket::{BlockValue, DEFAULT_BLOCKS_PER_BUCKET};
+use oram::BlockSize;
 use oram::{Address, Oram};
-use oram::{BlockSize, BlockValue};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use oram::linear_time_oram::LinearTimeOram;
-use oram::path_oram::recursive_secure_path_oram::ConcreteObliviousBlockOram;
+use oram::path_oram::PathOram;
 
 const CAPACITIES_TO_BENCHMARK: [Address; 3] = [1 << 14, 1 << 16, 1 << 20];
 const NUM_RANDOM_OPERATIONS_TO_RUN: u64 = 64;
@@ -37,7 +38,7 @@ type BenchmarkLinearTimeOram<const B: BlockSize> =
     LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
 
 type BenchmarkRecursiveSecurePathOram<const B: BlockSize> =
-    ConcreteObliviousBlockOram<4096, BlockValue<B>>;
+    PathOram<BlockValue<B>, DEFAULT_BLOCKS_PER_BUCKET, 4096>;
 
 impl<const B: BlockSize> Instrumented for BenchmarkRecursiveSecurePathOram<B> {
     fn get_read_count(&self) -> u64 {

@@ -7,7 +7,8 @@
 
 //! A simple interactive demonstration of ORAM.
 
-use oram::path_oram::recursive_secure_path_oram::ConcreteObliviousBlockOram;
+use oram::bucket::DEFAULT_BLOCKS_PER_BUCKET;
+use oram::path_oram::PathOram;
 use oram::{BlockSize, Oram};
 use rand::rngs::OsRng;
 use rustyline::history::FileHistory;
@@ -46,8 +47,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let capacity = parse_u64("How many u64s would you like the ORAM to store?", &mut rl)?;
 
     // Initialize a Path ORAM storing `capacity` u64s.
-    let mut oram =
-        ConcreteObliviousBlockOram::<ADDRESS_BLOCK_SIZE, OramValue>::new(capacity, &mut rng)?;
+    let mut oram = PathOram::<OramValue, DEFAULT_BLOCKS_PER_BUCKET, ADDRESS_BLOCK_SIZE>::new(
+        capacity, &mut rng,
+    )?;
 
     loop {
         let action = loop {

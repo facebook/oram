@@ -11,12 +11,10 @@
 use std::fmt::Debug;
 use std::sync::Once;
 static INIT: Once = Once::new();
+use crate::bucket::Bucket;
 use crate::database::{CountAccessesDatabase, Database, SimpleDatabase};
 use crate::linear_time_oram::LinearTimeOram;
-use crate::path_oram::generic_path_oram::GenericPathOram;
-use crate::path_oram::position_map::PositionMap;
-use crate::path_oram::Bucket;
-use crate::path_oram::Stash;
+use crate::path_oram::PathOram;
 use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError};
 use duplicate::duplicate_item;
 use rand::{
@@ -44,10 +42,7 @@ pub trait Testable {
 )]
 impl<V: OramBlock> Testable for database_type<V> {}
 impl<DB> Testable for LinearTimeOram<DB> {}
-impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize, P: PositionMap<AB>, S: Stash<V>>
-    Testable for GenericPathOram<V, Z, AB, P, S>
-{
-}
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Testable for PathOram<V, Z, AB> {}
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
 pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testable>(
@@ -186,7 +181,7 @@ macro_rules! monitor_boilerplate {
             rng: &mut R,
         ) -> Result<Self, OramError> {
             Ok(Self {
-                oram: GenericPathOram::new(block_capacity, rng)?,
+                oram: PathOram::new(block_capacity, rng)?,
             })
         }
 
@@ -220,16 +215,11 @@ pub(crate) struct StashSizeMonitor<T> {
 
 impl<T> Testable for StashSizeMonitor<T> {}
 
-pub(crate) type VecStashSizeMonitor<V, const Z: BucketSize, const AB: BlockSize, P, S> =
-    StashSizeMonitor<GenericPathOram<V, Z, AB, P, S>>;
+pub(crate) type VecStashSizeMonitor<V, const Z: BucketSize, const AB: BlockSize> =
+    StashSizeMonitor<PathOram<V, Z, AB>>;
 
-impl<
-        V: OramBlock,
-        const Z: BucketSize,
-        const AB: BlockSize,
-        P: PositionMap<AB> + std::fmt::Debug,
-        S: Stash<V> + std::fmt::Debug,
-    > Oram<V> for VecStashSizeMonitor<V, Z, AB, P, S>
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
+    for VecStashSizeMonitor<V, Z, AB>
 {
     monitor_boilerplate!();
 
@@ -253,16 +243,11 @@ pub(crate) struct ConstantOccupancyMonitor<T> {
 
 impl<T> Testable for ConstantOccupancyMonitor<T> {}
 
-pub(crate) type VecConstantOccupancyMonitor<V, const Z: BucketSize, const AB: BlockSize, P, S> =
-    ConstantOccupancyMonitor<GenericPathOram<V, Z, AB, P, S>>;
+pub(crate) type VecConstantOccupancyMonitor<V, const Z: BucketSize, const AB: BlockSize> =
+    ConstantOccupancyMonitor<PathOram<V, Z, AB>>;
 
-impl<
-        V: OramBlock,
-        const Z: BucketSize,
-        const AB: BlockSize,
-        P: PositionMap<AB> + std::fmt::Debug,
-        S: Stash<V> + std::fmt::Debug,
-    > Oram<V> for VecConstantOccupancyMonitor<V, Z, AB, P, S>
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
+    for VecConstantOccupancyMonitor<V, Z, AB>
 {
     monitor_boilerplate!();
 
@@ -292,16 +277,11 @@ pub(crate) struct PhysicalAccessCountMonitor<T> {
 
 impl<T> Testable for PhysicalAccessCountMonitor<T> {}
 
-pub(crate) type VecPhysicalAccessCountMonitor<V, const Z: BucketSize, const AB: BlockSize, P, S> =
-    PhysicalAccessCountMonitor<GenericPathOram<V, Z, AB, P, S>>;
+pub(crate) type VecPhysicalAccessCountMonitor<V, const Z: BucketSize, const AB: BlockSize> =
+    PhysicalAccessCountMonitor<PathOram<V, Z, AB>>;
 
-impl<
-        V: OramBlock,
-        const Z: BucketSize,
-        const AB: BlockSize,
-        P: PositionMap<AB> + std::fmt::Debug,
-        S: Stash<V> + std::fmt::Debug,
-    > Oram<V> for VecPhysicalAccessCountMonitor<V, Z, AB, P, S>
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
+    for VecPhysicalAccessCountMonitor<V, Z, AB>
 {
     monitor_boilerplate!();
 
@@ -353,7 +333,7 @@ macro_rules! create_statistics_test_for_oram_type {
                 block_capacity: Address,
                 rng: &mut R,
             ) -> Result<Self, OramError> {
-                let mut oram = GenericPathOram::new(block_capacity, rng).unwrap();
+                let mut oram = PathOram::new(block_capacity, rng).unwrap();
 
                 // Avoid counting reads and writes occurring during initialization
                 for i in 0..oram.physical_memory.reads.len() {
