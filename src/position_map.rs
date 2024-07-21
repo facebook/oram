@@ -7,7 +7,7 @@
 
 //! A recursive Path ORAM position map data structure.
 
-use super::path_oram::PathOram;
+use super::path_oram::{PathOram, RecursionThreshold};
 use crate::bucket::PositionBlock;
 use crate::OramError;
 use crate::{
@@ -18,9 +18,9 @@ use log::debug;
 use rand::{CryptoRng, RngCore};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
-const RECURSION_THRESHOLD: u64 = 1 << 12;
-
-impl<const AB: BlockSize, V: OramBlock, const Z: BucketSize> PathOram<V, Z, AB> {
+impl<const AB: BlockSize, V: OramBlock, const Z: BucketSize, const RT: RecursionThreshold>
+    PathOram<V, Z, AB, RT>
+{
     pub(crate) fn recursion_height(&self) -> usize {
         self.position_map.recursion_height()
     }
@@ -28,13 +28,15 @@ impl<const AB: BlockSize, V: OramBlock, const Z: BucketSize> PathOram<V, Z, AB> 
 
 /// A recursive Path ORAM position map data structure. `AB` is the number of addresses stored in each ORAM block.
 #[derive(Debug)]
-pub enum PositionMap<const AB: BlockSize, const Z: BucketSize> {
+pub enum PositionMap<const AB: BlockSize, const Z: BucketSize, const RT: RecursionThreshold> {
     /// A simple, linear-time `AddressOram`.
     Base(LinearTimeOram<SimpleDatabase<PositionBlock<AB>>>),
     /// A recursive `AddressOram` whose position map is also an `AddressOram`.
-    Recursive(Box<PathOram<PositionBlock<AB>, Z, AB>>),
+    Recursive(Box<PathOram<PositionBlock<AB>, Z, AB, RT>>),
 }
-impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
+impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionThreshold>
+    PositionMap<AB, Z, RT>
+{
     pub(crate) fn recursion_height(&self) -> usize {
         match self {
             PositionMap::Base(_) => 0,
@@ -54,14 +56,16 @@ impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
     }
 }
 
-impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
+impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionThreshold>
+    PositionMap<AB, Z, RT>
+{
     pub fn write_position_block<R: RngCore + CryptoRng>(
         &mut self,
         address: Address,
         position_block: PositionBlock<AB>,
         rng: &mut R,
     ) -> Result<(), OramError> {
-        let address_of_block = PositionMap::<AB, Z>::address_of_block(address);
+        let address_of_block = PositionMap::<AB, Z, RT>::address_of_block(address);
 
         match self {
             PositionMap::Base(linear_oram) => {
@@ -77,7 +81,9 @@ impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
     }
 }
 
-impl<const AB: BlockSize, const Z: BucketSize> Oram<TreeIndex> for PositionMap<AB, Z> {
+impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionThreshold> Oram<TreeIndex>
+    for PositionMap<AB, Z, RT>
+{
     fn new<R: CryptoRng + RngCore>(
         number_of_addresses: Address,
         rng: &mut R,
@@ -92,7 +98,7 @@ impl<const AB: BlockSize, const Z: BucketSize> Oram<TreeIndex> for PositionMap<A
         }
 
         let ab_address: Address = AB.try_into()?;
-        if number_of_addresses / ab_address <= RECURSION_THRESHOLD {
+        if number_of_addresses / ab_address <= RT {
             let mut block_capacity = number_of_addresses / ab_address;
             if number_of_addresses % ab_address > 0 {
                 block_capacity += 1;
@@ -155,8 +161,8 @@ impl<const AB: BlockSize, const Z: BucketSize> Oram<TreeIndex> for PositionMap<A
         callback: F,
         rng: &mut R,
     ) -> Result<TreeIndex, OramError> {
-        let address_of_block = PositionMap::<AB, Z>::address_of_block(address);
-        let address_within_block = PositionMap::<AB, Z>::address_within_block(address)?;
+        let address_of_block = PositionMap::<AB, Z, RT>::address_of_block(address);
+        let address_within_block = PositionMap::<AB, Z, RT>::address_within_block(address)?;
 
         let block_callback = |block: &PositionBlock<AB>| {
             let mut result: PositionBlock<AB> = *block;

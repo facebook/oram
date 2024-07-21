@@ -14,7 +14,8 @@ static INIT: Once = Once::new();
 use crate::bucket::Bucket;
 use crate::database::{CountAccessesDatabase, Database, SimpleDatabase};
 use crate::linear_time_oram::LinearTimeOram;
-use crate::path_oram::PathOram;
+use crate::path_oram::DEFAULT_RECURSION_THRESHOLD;
+use crate::path_oram::{PathOram, RecursionThreshold};
 use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError};
 use duplicate::duplicate_item;
 use rand::{
@@ -42,7 +43,10 @@ pub trait Testable {
 )]
 impl<V: OramBlock> Testable for database_type<V> {}
 impl<DB> Testable for LinearTimeOram<DB> {}
-impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Testable for PathOram<V, Z, AB> {}
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize, const RT: RecursionThreshold> Testable
+    for PathOram<V, Z, AB, RT>
+{
+}
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
 pub(crate) fn test_correctness_random_workload<V: OramBlock, T: Oram<V> + Testable>(
@@ -216,7 +220,7 @@ pub(crate) struct StashSizeMonitor<T> {
 impl<T> Testable for StashSizeMonitor<T> {}
 
 pub(crate) type VecStashSizeMonitor<V, const Z: BucketSize, const AB: BlockSize> =
-    StashSizeMonitor<PathOram<V, Z, AB>>;
+    StashSizeMonitor<PathOram<V, Z, AB, DEFAULT_RECURSION_THRESHOLD>>;
 
 impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
     for VecStashSizeMonitor<V, Z, AB>
@@ -244,7 +248,7 @@ pub(crate) struct ConstantOccupancyMonitor<T> {
 impl<T> Testable for ConstantOccupancyMonitor<T> {}
 
 pub(crate) type VecConstantOccupancyMonitor<V, const Z: BucketSize, const AB: BlockSize> =
-    ConstantOccupancyMonitor<PathOram<V, Z, AB>>;
+    ConstantOccupancyMonitor<PathOram<V, Z, AB, DEFAULT_RECURSION_THRESHOLD>>;
 
 impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
     for VecConstantOccupancyMonitor<V, Z, AB>
@@ -278,7 +282,7 @@ pub(crate) struct PhysicalAccessCountMonitor<T> {
 impl<T> Testable for PhysicalAccessCountMonitor<T> {}
 
 pub(crate) type VecPhysicalAccessCountMonitor<V, const Z: BucketSize, const AB: BlockSize> =
-    PhysicalAccessCountMonitor<PathOram<V, Z, AB>>;
+    PhysicalAccessCountMonitor<PathOram<V, Z, AB, DEFAULT_RECURSION_THRESHOLD>>;
 
 impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
     for VecPhysicalAccessCountMonitor<V, Z, AB>

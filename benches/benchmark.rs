@@ -17,13 +17,12 @@ use oram::database::CountAccessesDatabase;
 use std::fmt::Display;
 use std::time::Duration;
 
-use oram::bucket::{BlockValue, DEFAULT_BLOCKS_PER_BUCKET};
+use oram::bucket::BlockValue;
 use oram::BlockSize;
-use oram::{Address, Oram};
+use oram::{Address, DefaultOram, Oram};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use oram::linear_time_oram::LinearTimeOram;
-use oram::path_oram::PathOram;
 
 const CAPACITIES_TO_BENCHMARK: [Address; 3] = [1 << 14, 1 << 16, 1 << 20];
 const NUM_RANDOM_OPERATIONS_TO_RUN: u64 = 64;
@@ -37,8 +36,7 @@ trait Instrumented {
 type BenchmarkLinearTimeOram<const B: BlockSize> =
     LinearTimeOram<CountAccessesDatabase<BlockValue<B>>>;
 
-type BenchmarkRecursiveSecurePathOram<const B: BlockSize> =
-    PathOram<BlockValue<B>, DEFAULT_BLOCKS_PER_BUCKET, 4096>;
+type BenchmarkRecursiveSecurePathOram<const B: BlockSize> = DefaultOram<BlockValue<B>>;
 
 impl<const B: BlockSize> Instrumented for BenchmarkRecursiveSecurePathOram<B> {
     fn get_read_count(&self) -> u64 {

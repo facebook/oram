@@ -30,12 +30,12 @@
 //!
 //! ```
 //! use rand::rngs::OsRng;
-//! use oram::{Oram, PathOram, bucket::DEFAULT_BLOCKS_PER_BUCKET};
+//! use oram::{Oram, DefaultOram};
 //! # use oram::OramError;
 //!
 //! let capacity = 64;
 //! let mut rng = OsRng;
-//! let mut oram = PathOram::<u8, DEFAULT_BLOCKS_PER_BUCKET, 64>::new(capacity, &mut rng)?;
+//! let mut oram = DefaultOram::<u8>::new(capacity, &mut rng)?;
 //! oram.write(1, 42u8, &mut rng)?;
 //! assert_eq!(oram.read(1, &mut rng)?, 42u8);
 //! # Ok::<(), OramError>(())
@@ -59,6 +59,7 @@ pub(crate) mod stash;
 mod test_utils;
 pub(crate) mod utils;
 
+pub use crate::path_oram::DefaultOram;
 pub use crate::path_oram::PathOram;
 
 /// The numeric type used to specify the size of an ORAM block in bytes.
