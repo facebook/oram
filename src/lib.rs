@@ -48,6 +48,16 @@
 //! let _ = oram.read(secret, &mut rng)?;
 //! # Ok::<(), OramError>(())
 //! ```
+//!
+//! # Advanced
+//!
+//! ORAMs can store arbitrary structs implementing `OramBlock`.
+//! We provide implementations of `OramBlock` for `u8`, `u16`, `u32`, `u64`, `i8`, `i16`, `i32`, `i64`,
+//! and `BlockValue<const B: BlockSize>`.
+//!
+//! The `DefaultOram` used in the above example should have good performance in most use cases.
+//! But the underlying algorithms have several tunable parameters that impact performance.
+//! TO BE CONTINUED
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
