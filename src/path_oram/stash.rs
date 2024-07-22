@@ -83,7 +83,6 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         position: TreeIndex,
     ) -> Result<(), OramError> {
         let height = position.ct_depth();
-
         let mut level_assignments = vec![TreeIndex::MAX; self.len()];
         let mut level_counts = vec![0; usize::try_from(height)? + 1];
 
@@ -118,17 +117,38 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         }
 
         // Assign dummy blocks to the remaining non-full buckets until all buckets are full.
-        for (i, block) in self.blocks.iter().enumerate() {
-            let block_free = block.ct_is_dummy();
+        let mut exists_unfilled_levels: Choice = 1.into();
+        // Unless the stash overflows, this loop will execute exactly once, and the inner `if` will not execute.
+        // If the stash overflows, this loop will execute twice and the inner `if` will execute.
+        // This difference in control flow will leak the fact that the stash has overflowed.
+        // This is a violation of obliviousness, but the alternative is simply to fail.
+        // If the stash is set large enough when the ORAM is initialized,
+        // stash overflow will occur only with negligible probability.
+        while exists_unfilled_levels.into() {
+            for (i, block) in self.blocks.iter().enumerate() {
+                let block_free = block.ct_is_dummy();
 
-            let mut assigned: Choice = 0.into();
-            for (level, count) in level_counts.iter_mut().enumerate() {
+                let mut assigned: Choice = 0.into();
+                for (level, count) in level_counts.iter_mut().enumerate() {
+                    let full = count.ct_eq(&(u64::try_from(Z)?));
+                    let no_op = assigned | full | !block_free;
+
+                    level_assignments[i].conditional_assign(&(u64::try_from(level))?, !no_op);
+                    count.conditional_assign(&(*count + 1), !no_op);
+                    assigned |= !no_op;
+                }
+            }
+
+            exists_unfilled_levels = 0.into();
+            for count in level_counts.iter() {
                 let full = count.ct_eq(&(u64::try_from(Z)?));
-                let no_op = assigned | full | !block_free;
+                exists_unfilled_levels |= !full;
+            }
 
-                level_assignments[i].conditional_assign(&(u64::try_from(level))?, !no_op);
-                count.conditional_assign(&(*count + 1), !no_op);
-                assigned |= !no_op;
+            if exists_unfilled_levels.into() {
+                self.blocks
+                    .resize(2 * self.blocks.len(), PathOramBlock::<V>::dummy());
+                level_assignments.resize(2 * level_assignments.len(), TreeIndex::MAX);
             }
         }
 

@@ -154,7 +154,7 @@ macro_rules! create_correctness_tests_for_workload_and_oram_type {
         create_correctness_test_block_value!($function_name, $oram_type, $block_type, 8, 8, 100);
         create_correctness_test_block_value!($function_name, $oram_type, $block_type, 4, 16, 100);
         create_correctness_test_block_value!($function_name, $oram_type, $block_type, 4, 32, 100);
-        // Block size 16 bytes, block capacity 32 blocks, testing with 100 operations
+        // Block size 16 bytes, block capacity 64 blocks, testing with 100 operations
         create_correctness_test_block_value!($function_name, $oram_type, $block_type, 16, 64, 100);
         create_correctness_test_block_value!($function_name, $oram_type, $block_type, 2, 8, 1000);
     };
