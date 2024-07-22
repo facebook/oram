@@ -9,11 +9,11 @@
 
 use super::generic_path_oram::GenericPathOram;
 use super::position_map::PositionMap;
-use super::{address_oram_block::AddressOramBlock, stash::Stash, TreeIndex};
+use super::{stash::Stash, AddressOramBlock};
 use crate::OramError;
 use crate::{
-    database::SimpleDatabase, linear_time_oram::LinearTimeOram, Address, BlockSize, BucketSize,
-    Oram, OramBlock,
+    database::SimpleDatabase, linear_time_oram::LinearTimeOram, utils::TreeIndex, Address,
+    BlockSize, BucketSize, Oram, OramBlock,
 };
 use log::debug;
 use rand::{CryptoRng, RngCore};

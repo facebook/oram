@@ -13,9 +13,9 @@ use std::sync::Once;
 static INIT: Once = Once::new();
 use crate::database::{CountAccessesDatabase, Database, SimpleDatabase};
 use crate::linear_time_oram::LinearTimeOram;
-use crate::path_oram::bucket::Bucket;
 use crate::path_oram::generic_path_oram::GenericPathOram;
 use crate::path_oram::position_map::PositionMap;
+use crate::path_oram::Bucket;
 use crate::path_oram::Stash;
 use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError};
 use duplicate::duplicate_item;
@@ -182,7 +182,7 @@ pub(crate) use create_correctness_tests_for_workload_and_oram_type;
 macro_rules! monitor_boilerplate {
     () => {
         fn new<R: rand::RngCore + rand::CryptoRng>(
-            block_capacity: crate::Address,
+            block_capacity: Address,
             rng: &mut R,
         ) -> Result<Self, OramError> {
             Ok(Self {
@@ -235,7 +235,7 @@ impl<
 
     fn access<R: rand::RngCore + rand::CryptoRng, F: Fn(&V) -> V>(
         &mut self,
-        index: crate::Address,
+        index: Address,
         callback: F,
         rng: &mut R,
     ) -> Result<V, OramError> {
@@ -268,7 +268,7 @@ impl<
 
     fn access<R: rand::RngCore + rand::CryptoRng, F: Fn(&V) -> V>(
         &mut self,
-        index: crate::Address,
+        index: Address,
         callback: F,
         rng: &mut R,
     ) -> Result<V, OramError> {
@@ -307,7 +307,7 @@ impl<
 
     fn access<R: rand::RngCore + rand::CryptoRng, F: Fn(&V) -> V>(
         &mut self,
-        index: crate::Address,
+        index: Address,
         callback: F,
         rng: &mut R,
     ) -> Result<V, OramError> {
@@ -350,7 +350,7 @@ macro_rules! create_statistics_test_for_oram_type {
     ($oram_type: ident, $block_type: ident) => {
         impl<const B: BlockSize, V: OramBlock> Oram<V> for $oram_type<B, V> {
             fn new<R: rand::RngCore + rand::CryptoRng>(
-                block_capacity: crate::Address,
+                block_capacity: Address,
                 rng: &mut R,
             ) -> Result<Self, OramError> {
                 let mut oram = GenericPathOram::new(block_capacity, rng).unwrap();
@@ -370,7 +370,7 @@ macro_rules! create_statistics_test_for_oram_type {
 
             fn access<R: rand::RngCore + rand::CryptoRng, F: Fn(&V) -> V>(
                 &mut self,
-                index: crate::Address,
+                index: Address,
                 callback: F,
                 rng: &mut R,
             ) -> Result<V, OramError> {

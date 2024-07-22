@@ -67,9 +67,7 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        block_value::BlockValue, database::CountAccessesDatabase, test_utils::*, BlockSize,
-    };
+    use crate::{database::CountAccessesDatabase, test_utils::*, BlockSize, BlockValue};
 
     type ConcreteLinearTimeOram<const B: BlockSize, V> = LinearTimeOram<CountAccessesDatabase<V>>;
 

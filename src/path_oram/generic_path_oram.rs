@@ -7,15 +7,13 @@
 
 //! Contains an abstract implementation of Path ORAM that is generic over its stash and position map data structures.
 
-use super::{
-    bucket::Bucket, position_map::PositionMap, stash::Stash, tree_index::CompleteBinaryTreeIndex,
-    PathOramBlock, TreeHeight,
-};
+use super::{position_map::PositionMap, stash::Stash, Bucket, PathOramBlock};
 use crate::{
     database::{CountAccessesDatabase, Database},
-    path_oram::address_oram_block::AddressOramBlock,
+    path_oram::AddressOramBlock,
     utils::{
         invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
+        CompleteBinaryTreeIndex, TreeHeight,
     },
     Address, BlockSize, BucketSize, Oram, OramBlock, OramError,
 };

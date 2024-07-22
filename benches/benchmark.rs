@@ -17,8 +17,8 @@ use oram::database::CountAccessesDatabase;
 use std::fmt::Display;
 use std::time::Duration;
 
-use oram::{block_value::BlockValue, BlockSize};
 use oram::{Address, Oram};
+use oram::{BlockSize, BlockValue};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use oram::linear_time_oram::LinearTimeOram;
