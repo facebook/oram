@@ -13,7 +13,7 @@ use crate::{Address, Oram, OramBlock, OramError};
 use duplicate::duplicate_item;
 use rand::{CryptoRng, RngCore};
 
-/// A simple Memory trait to model the memory controller the TEE is interacting with.
+/// Models a random-access memory.
 pub trait Database<V: OramBlock>
 where
     Self: Sized,
@@ -28,7 +28,7 @@ where
     fn write_db(&mut self, index: Address, value: V) -> Result<V, OramError>;
 }
 
-/// A simple Database that stores its data as a Vec.
+/// A simple `Database` that stores its data as a Vec.
 #[derive(Debug)]
 pub struct SimpleDatabase<V>(Vec<V>);
 
@@ -54,7 +54,7 @@ impl<V: OramBlock> Database<V> for SimpleDatabase<V> {
     }
 }
 
-/// A Database that counts reads and writes.
+/// A `Database` that counts reads and writes.
 #[derive(Debug)]
 pub struct CountAccessesDatabase<V> {
     data: SimpleDatabase<V>,
@@ -62,8 +62,6 @@ pub struct CountAccessesDatabase<V> {
     pub reads: Vec<u64>,
     /// `writes[i]` tracks the total number of writes made to index `i`.
     pub writes: Vec<u64>,
-    // read_count: u128,
-    // write_count: u128,
 }
 
 impl<V> CountAccessesDatabase<V> {

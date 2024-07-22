@@ -5,7 +5,7 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! Tree index
+//! Utilities for working with indices into a Path ORAM tree data structure.
 
 use super::{TreeHeight, TreeIndex};
 use rand::{CryptoRng, Rng, RngCore};
@@ -14,7 +14,7 @@ use std::{mem::size_of, num::TryFromIntError};
 
 const_assert_eq!(size_of::<TreeIndex>(), 8);
 
-pub trait CompleteBinaryTreeIndex
+pub(crate) trait CompleteBinaryTreeIndex
 where
     Self: Sized,
 {

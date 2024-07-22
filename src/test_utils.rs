@@ -16,7 +16,7 @@ use crate::linear_time_oram::LinearTimeOram;
 use crate::path_oram::bucket::Bucket;
 use crate::path_oram::generic_path_oram::GenericPathOram;
 use crate::path_oram::position_map::PositionMap;
-use crate::path_oram::stash::Stash;
+use crate::path_oram::Stash;
 use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError};
 use duplicate::duplicate_item;
 use rand::{

@@ -5,7 +5,7 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! A trait representing a Path ORAM stash.
+//! Implements a trait `Stash` representing a Path ORAM stash data structure.
 
 use super::{bucket::Bucket, TreeIndex};
 use crate::{database::Database, Address, BucketSize, OramBlock, OramError};
@@ -13,26 +13,29 @@ use crate::{database::Database, Address, BucketSize, OramBlock, OramError};
 /// Numeric type used to represent the size of a Path ORAM stash in blocks.
 pub type StashSize = u64;
 
-/// A Path ORAM stash.
+/// A generic Path ORAM stash data structure.
 pub trait Stash<V: OramBlock>
 where
     Self: Sized,
 {
     /// Creates a new stash capable of holding `capacity` blocks.
     fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, OramError>;
-    /// Read blocks from the path specified by the leaf `position` in the tree `physical_memory` of height `height`
+
+    /// Reads blocks from the path specified by the leaf `position` in the tree `physical_memory` of height `height`.
     fn read_from_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
         &mut self,
         physical_memory: &mut T,
         position: TreeIndex,
     ) -> Result<(), OramError>;
-    /// Evict blocks from the stash to the path specified by the leaf `position` in the tree `physical_memory` of height `height`.
+
+    /// Evicts blocks from the stash to the path specified by the leaf `position` in the tree `physical_memory` of height `height`.
     fn write_to_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
         &mut self,
         physical_memory: &mut T,
         position: TreeIndex,
     ) -> Result<(), OramError>;
-    /// Obliviously scans the stash for a block `b` with address `address`; if found, replaces that block with `callback(b)`.
+
+    /// Obliviously scans the stash for a block `b` with address `address`; if found, replaces that block with `callback(b)` and returns `b`.
     fn access<F: Fn(&V) -> V>(
         &mut self,
         address: Address,

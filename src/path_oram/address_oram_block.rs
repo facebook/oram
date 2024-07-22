@@ -5,8 +5,7 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! This module contains common test utilities for crates generating tests utilizing the
-//! `oram` crate.
+//! Implements `AddressOramBlock`, an ORAM block used in recursive position map ORAMs.
 
 use super::TreeIndex;
 use crate::{BlockSize, OramBlock};

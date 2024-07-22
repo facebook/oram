@@ -5,7 +5,7 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! A Path ORAM block.
+//! Implements a Path ORAM block `PathOramBlock<V>`.
 
 use crate::{path_oram::TreeIndex, Address, OramBlock};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
@@ -13,6 +13,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 impl OramBlock for TreeIndex {}
 
 #[derive(Clone, Copy, Default, PartialEq)]
+/// A Path ORAM block combines an `OramBlock` V with two metadata fields; its ORAM `address` and its `position` in the tree.
 pub struct PathOramBlock<V> {
     pub value: V,
     pub address: Address,

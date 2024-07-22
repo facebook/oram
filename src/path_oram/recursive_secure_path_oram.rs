@@ -29,6 +29,17 @@ pub type ConcreteObliviousAddressOram<const AB: BlockSize, V> = GenericPathOram<
 pub type ConcreteObliviousBlockOram<const B: BlockSize, V> =
     BlockOram<B, V, DEFAULT_BLOCKS_PER_BUCKET, BitonicStash<AddressOramBlock<B>>, BitonicStash<V>>;
 
+const DEFAULT_BLOCK_SIZE: BlockSize = 64;
+const DEFAULT_ADDRESS_BLOCK_SIZE: BlockSize = 64;
+/// An even simpler Path ORAM type with address block size fixed.
+pub type DefaultPathOram<V> = BlockOram<
+    DEFAULT_BLOCK_SIZE,
+    V,
+    DEFAULT_BLOCKS_PER_BUCKET,
+    BitonicStash<AddressOramBlock<DEFAULT_ADDRESS_BLOCK_SIZE>>,
+    BitonicStash<V>,
+>;
+
 #[cfg(test)]
 mod address_oram_tests {
     use super::*;

@@ -38,7 +38,7 @@ impl<
     }
 }
 
-/// An `Oram` intended for use as a position map. `AB` is the block size in addresses.
+/// An `Oram` intended for use as a position map. `AB` is the number of addresses stored in each ORAM block.
 #[derive(Debug)]
 pub enum AddressOram<
     const AB: BlockSize,
