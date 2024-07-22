@@ -11,11 +11,8 @@ use crate::{
     bucket::{Bucket, PathOramBlock},
     database::Database,
     utils::{bitonic_sort_by_keys, CompleteBinaryTreeIndex, TreeIndex},
-    Address, BucketSize, OramBlock, OramError,
+    Address, BucketSize, OramBlock, OramError, StashSize,
 };
-
-/// Numeric type used to represent the size of a Path ORAM stash in blocks.
-pub type StashSize = u64;
 
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 

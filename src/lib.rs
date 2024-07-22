@@ -23,7 +23,7 @@
 //!
 //! # Example
 //!
-//! The below example reads a database from memory into an ORAM to permit secret-dependent access to it.
+//! The below example reads a database from memory into an ORAM, thus permitting secret-dependent accesses.
 //!
 //! ```
 //! use oram::{Address, BlockSize, BlockValue, Oram, DefaultOram};
@@ -35,10 +35,10 @@
 //! # [[0; BLOCK_SIZE as usize]; DB_SIZE as usize];
 //! let mut rng = rand::rngs::OsRng;
 //!
-//! // Initialize `oram` to store 64 blocks of 64 bytes each.
+//! // Initialize an ORAM to store 64 blocks of 64 bytes each.
 //! let mut oram = DefaultOram::<BlockValue<BLOCK_SIZE>>::new(DB_SIZE, &mut rng)?;
 //!
-//! // Read DATABASE into oram.
+//! // Read a database (here, an array of byte arrays) into the ORAM.
 //! for (i, bytes) in DATABASE.iter().enumerate() {
 //!     oram.write(i as Address, BlockValue::new(*bytes), &mut rng)?;
 //! }
@@ -57,7 +57,35 @@
 //!
 //! The `DefaultOram` used in the above example should have good performance in most use cases.
 //! But the underlying algorithms have several tunable parameters that impact performance.
-//! TO BE CONTINUED
+//! The following example instantiates the same ORAM struct as above, but using the `PathOram`
+//! interface which exposes these parameters.
+//!
+//! ```
+//! use oram::{Address, BlockSize, BlockValue, BucketSize,
+//!             Oram, PathOram, StashSize, RecursionCutoff};
+//! use oram::path_oram::{DEFAULT_BLOCKS_PER_BUCKET, DEFAULT_RECURSION_CUTOFF,
+//!             DEFAULT_POSITIONS_PER_BLOCK, DEFAULT_STASH_OVERFLOW_SIZE};
+//! # use oram::OramError;
+//! # let mut rng = rand::rngs::OsRng;
+//! # const BLOCK_SIZE: BlockSize = 64;
+//! # const DB_SIZE: Address = 64;
+//!
+//! const RECURSION_CUTOFF: RecursionCutoff = DEFAULT_RECURSION_CUTOFF;
+//! const BUCKET_SIZE: BucketSize = DEFAULT_BLOCKS_PER_BUCKET;
+//! const POSITIONS_PER_BLOCK: BlockSize = DEFAULT_POSITIONS_PER_BLOCK;
+//! const INITIAL_STASH_OVERFLOW_SIZE: StashSize = DEFAULT_STASH_OVERFLOW_SIZE;
+//!
+//! let mut oram = PathOram::<
+//!     BlockValue<BLOCK_SIZE>,
+//!     BUCKET_SIZE,
+//!     POSITIONS_PER_BLOCK,
+//!     RECURSION_CUTOFF,
+//!     INITIAL_STASH_OVERFLOW_SIZE
+//!     >::new(DB_SIZE, &mut rng)?;
+//! # Ok::<(), OramError>(())
+//! ```
+//!
+//! See [`PathOram`] for an explanation of these parameters and their possible settings.
 
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
 
@@ -87,6 +115,11 @@ pub type BlockSize = usize;
 pub type Address = u64;
 /// The numeric type used to specify the size of an ORAM bucket in blocks.
 pub type BucketSize = usize;
+/// The numeric type used to specify the cutoff size
+/// below which `PathOram` uses a linear position map instead of a recursive one.
+pub type RecursionCutoff = u64;
+/// Numeric type used to represent the size of a Path ORAM stash in blocks.
+pub type StashSize = u64;
 
 /// A "trait alias" for ORAM blocks: the values read and written by ORAMs.
 pub trait OramBlock:

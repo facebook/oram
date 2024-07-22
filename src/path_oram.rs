@@ -7,10 +7,7 @@
 
 //! An implementation of Path ORAM.
 
-use super::{
-    position_map::PositionMap,
-    stash::{ObliviousStash, StashSize},
-};
+use super::{position_map::PositionMap, stash::ObliviousStash};
 use crate::{
     bucket::{Bucket, PathOramBlock, PositionBlock},
     database::{CountAccessesDatabase, Database},
@@ -18,35 +15,68 @@ use crate::{
         invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
         CompleteBinaryTreeIndex, TreeHeight,
     },
-    Address, BlockSize, BucketSize, Oram, OramBlock, OramError,
+    Address, BlockSize, BucketSize, Oram, OramBlock, OramError, RecursionCutoff, StashSize,
 };
 use rand::{CryptoRng, Rng};
 use std::mem;
 
-/// The numeric type used to specify the cutoff size
-/// below which `PathOram` uses a linear position map instead of a recursive one.
-pub type RecursionThreshold = u64;
-
 /// The default cutoff size in blocks
 /// below which `PathOram` uses a linear position map instead of a recursive one.
-pub const DEFAULT_RECURSION_THRESHOLD: u64 = 1 << 12;
+pub const DEFAULT_RECURSION_CUTOFF: RecursionCutoff = 1 << 12;
 
 /// The parameter "Z" from the Path ORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
 /// Here we adopt the more conservative setting of 4.
 pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSize = 4;
 
 /// The default number of positions stored per position block.
-pub const DEFAULT_POSITION_BLOCK_SIZE: BlockSize = 4096;
+pub const DEFAULT_POSITIONS_PER_BLOCK: BlockSize = 512;
 
-const OVERFLOW_SIZE: StashSize = 40;
+/// The default number of overflow blocks that the Path ORAM stash (and recursive stashes) can store.
+pub const DEFAULT_STASH_OVERFLOW_SIZE: StashSize = 40;
 
 /// A doubly oblivious Path ORAM.
+///
+/// ## Parameters
+///
+/// - `V`: the type (block) stored by the ORAM.
+/// - `Z`: The number of blocks per Path ORAM bucket.
+///     Typical values are 3, 4, or 5. Along with SO, this value affects the probability
+///     of stash overflow (see below) and should be set with care.
+/// - `AB`:
+///     The number of positions stored in each block of the recursive position map ORAM.
+///     Must be a power of two and must be at least 2 (otherwise the recursion will not terminate).
+///     Otherwise, can be freely tuned for performance.
+///     Larger `AB` means fewer levels of recursion, but each level is more expensive.
+///     The default setting of 512 results in approximately 4K blocks (but see Issue #46).
+/// - `RT`: The recursion threshold. If the number of position blocks is at most this value,
+///     the position map will be a linear scanning ORAM; otherwise it will be a recursive Path ORAM.
+///     Can be freely tuned for performance.
+///     Larger `RT` means fewer levels of recursion, but the base position map is more expensive.
+/// - `SO`: The number of blocks that the stash can store between ORAM accesses without overflowing.
+///     This value affects the probability of stash overflow (see below) and should be set with care.
+///
+/// ## Security
+///
+/// ORAM operations are guaranteed to be oblivious, *unless* the stash overflows.
+/// In this case, the stash will grow, which reveals that the overflow occurred.
+/// This is a violation of obliviousness, but a mild one in several ways.
+/// The stash overflow is very likely to reset to empty after the overflow,
+/// and stash overflows are isolated events. It is not at all obvious
+/// how an attacker might use a stash overflow to infer properties of the access pattern.
+///
+/// That said, it is best to choose parameters so that the stash does not ever overflow.
+/// With Z = 4, experiments from the [original Path ORAM paper](https://eprint.iacr.org/2013/280.pdf)
+/// indicate that the probability of overflow is independent of the number N of blocks stored,
+/// and that setting SO = 40 is enough to reduce this probability to below 2^{-50} (Figure 3).
+/// The authors conservatively estimate that setting SO = 89 suffices for 2^{-80} overflow probability.
+/// The choice Z = 3 is also popular, although the probability of overflow is less well understood.
 #[derive(Debug)]
 pub struct PathOram<
     V: OramBlock,
     const Z: BucketSize,
     const AB: BlockSize,
-    const RT: RecursionThreshold,
+    const RT: RecursionCutoff,
+    const SO: StashSize,
 > {
     // The fields below are not meant to be exposed to clients. They are public for benchmarking and testing purposes.
     /// The underlying untrusted memory that the ORAM is obliviously accessing on behalf of its client.
@@ -54,7 +84,7 @@ pub struct PathOram<
     /// The Path ORAM stash.
     pub stash: ObliviousStash<V>,
     /// The Path ORAM position map.
-    pub position_map: PositionMap<AB, Z, RT>,
+    pub position_map: PositionMap<AB, Z, RT, SO>,
     /// The height of the Path ORAM tree data structure.
     pub height: TreeHeight,
 }
@@ -63,12 +93,18 @@ pub struct PathOram<
 pub type DefaultOram<V> = PathOram<
     V,
     DEFAULT_BLOCKS_PER_BUCKET,
-    DEFAULT_POSITION_BLOCK_SIZE,
-    DEFAULT_RECURSION_THRESHOLD,
+    DEFAULT_POSITIONS_PER_BLOCK,
+    DEFAULT_RECURSION_CUTOFF,
+    DEFAULT_STASH_OVERFLOW_SIZE,
 >;
 
-impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize, const RT: RecursionThreshold> Oram<V>
-    for PathOram<V, Z, AB, RT>
+impl<
+        V: OramBlock,
+        const Z: BucketSize,
+        const AB: BlockSize,
+        const RT: RecursionCutoff,
+        const SO: StashSize,
+    > Oram<V> for PathOram<V, Z, AB, RT, SO>
 {
     fn access<R: Rng + CryptoRng, F: Fn(&V) -> V>(
         &mut self,
@@ -120,7 +156,7 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize, const RT: Recursion
         let height: u64 = (block_capacity.ilog2() - 1).into();
 
         let path_size = u64::try_from(Z)? * (height + 1);
-        let stash = ObliviousStash::new(path_size, OVERFLOW_SIZE)?;
+        let stash = ObliviousStash::new(path_size, SO)?;
 
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
@@ -192,24 +228,23 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize, const RT: Recursion
     }
 }
 
-/// A secure Path ORAM with a recursive position map and obliviously accessed stash.
-pub type ConcreteObliviousBlockOram<const B: BlockSize, V> =
-    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, B, DEFAULT_RECURSION_THRESHOLD>;
-
-/// A specialization re
-pub type ConcreteObliviousAddressOram<const AB: BlockSize, V> =
-    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, AB, DEFAULT_RECURSION_THRESHOLD>;
-
 #[cfg(test)]
 mod block_oram_tests {
     use bucket::BlockValue;
-    use path_oram::ConcreteObliviousBlockOram;
 
-    use super::PathOram;
+    use super::*;
 
     use crate::test_utils::*;
     use crate::*;
     use core::iter::zip;
+
+    pub type ConcreteObliviousBlockOram<const B: BlockSize, V> = PathOram<
+        V,
+        DEFAULT_BLOCKS_PER_BUCKET,
+        B,
+        DEFAULT_RECURSION_CUTOFF,
+        DEFAULT_STASH_OVERFLOW_SIZE,
+    >;
 
     create_correctness_tests_for_oram_type!(ConcreteObliviousBlockOram, BlockValue);
 
@@ -244,6 +279,14 @@ mod address_oram_tests {
     use crate::*;
     use crate::{test_utils::*, OramBlock};
     use core::iter::zip;
+
+    type ConcreteObliviousAddressOram<const AB: BlockSize, V> = PathOram<
+        V,
+        DEFAULT_BLOCKS_PER_BUCKET,
+        AB,
+        DEFAULT_RECURSION_CUTOFF,
+        DEFAULT_STASH_OVERFLOW_SIZE,
+    >;
 
     create_correctness_tests_for_oram_type!(ConcreteObliviousAddressOram, PositionBlock);
 
