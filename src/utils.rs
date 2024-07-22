@@ -11,9 +11,7 @@ use crate::{OramBlock, OramError};
 use rand::seq::SliceRandom;
 use rand::{CryptoRng, Rng, RngCore};
 
-use subtle::{
-    Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeGreater, ConstantTimeLess,
-};
+use subtle::{Choice, ConditionallySelectable, ConstantTimeGreater, ConstantTimeLess};
 
 use static_assertions::const_assert_eq;
 use std::{mem::size_of, num::TryFromIntError};
@@ -93,9 +91,9 @@ impl CompleteBinaryTreeIndex for TreeIndex {
 }
 
 /// Sorts `items` in ascending order of `keys`, obliviously and in constant time.
-/// Assumes that `items.len()` is a power of two and that `keys.len() == items.len()`.
-/// The algorithm is a non-recursive version of bitonic sort based on
-/// pseudocode from [Wikipedia](https://en.wikipedia.org/wiki/Bitonic_sorter#Example_code).
+/// Assumes that `keys.len() == items.len()`.
+/// The algorithm is bitonic sort, based on code written by Hans Werner Lang
+/// and available [here](https://hwlang.de/algorithmen/sortieren/bitonic/oddn.htm).
 pub(crate) fn bitonic_sort_by_keys<
     T: ConditionallySelectable,
     K: Ord + ConditionallySelectable + ConstantTimeGreater + ConstantTimeLess,
@@ -103,29 +101,52 @@ pub(crate) fn bitonic_sort_by_keys<
     items: &mut [T],
     keys: &mut [K],
 ) {
-    let n = items.len();
-    assert!(n.is_power_of_two()); // This is already checked in oblivious stash initialization.
+    let ascending: Choice = 1.into();
+    helper_bitonic_sort_by_keys(0, items.len(), items, keys, ascending);
+}
 
-    let mut k = 2;
-    while k <= n {
-        let mut j = k / 2;
-        while j > 0 {
-            for i in 0..n {
-                let l = i ^ j;
-                if l > i {
-                    let ik0: Choice = (i & k).ct_eq(&0);
-                    let igtl: Choice = keys[i].ct_gt(&keys[l]);
-                    let iltl: Choice = keys[i].ct_lt(&keys[l]);
-                    let do_swap = (ik0 & igtl) | ((!ik0) & iltl);
-                    let (items_i, items_l) = items.split_at_mut(i + 1);
-                    T::conditional_swap(&mut items_i[i], &mut items_l[l - (i + 1)], do_swap);
-                    let (keys_i, keys_l) = keys.split_at_mut(i + 1);
-                    K::conditional_swap(&mut keys_i[i], &mut keys_l[l - (i + 1)], do_swap);
-                }
-            }
-            j /= 2;
+fn helper_bitonic_sort_by_keys<
+    T: ConditionallySelectable,
+    K: Ord + ConditionallySelectable + ConstantTimeGreater + ConstantTimeLess,
+>(
+    lo: usize,
+    n: usize,
+    items: &mut [T],
+    keys: &mut [K],
+    direction: Choice,
+) {
+    if n > 1 {
+        let m = n / 2;
+        helper_bitonic_sort_by_keys(lo, m, items, keys, !direction);
+        helper_bitonic_sort_by_keys(lo + m, n - m, items, keys, direction);
+        helper_bitonic_merge_by_keys(lo, n, items, keys, direction);
+    }
+}
+
+fn helper_bitonic_merge_by_keys<
+    T: ConditionallySelectable,
+    K: Ord + ConditionallySelectable + ConstantTimeGreater + ConstantTimeLess,
+>(
+    lo: usize,
+    n: usize,
+    items: &mut [T],
+    keys: &mut [K],
+    direction: Choice,
+) {
+    if n > 1 {
+        let m = n.next_power_of_two() >> 1;
+        for i in lo..(lo + n - m) {
+            let j = i + m;
+            let jlti = keys[j].ct_lt(&keys[i]);
+            let do_swap = !(jlti ^ direction);
+            let (items_i, items_j) = items.split_at_mut(i + 1);
+            T::conditional_swap(&mut items_i[i], &mut items_j[j - (i + 1)], do_swap);
+            let (keys_i, keys_j) = keys.split_at_mut(i + 1);
+            K::conditional_swap(&mut keys_i[i], &mut keys_j[j - (i + 1)], do_swap);
         }
-        k *= 2;
+
+        helper_bitonic_merge_by_keys(lo, m, items, keys, direction);
+        helper_bitonic_merge_by_keys(lo + m, n - m, items, keys, direction);
     }
 }
 

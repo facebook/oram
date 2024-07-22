@@ -42,9 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rl = Editor::<(), _>::new().unwrap();
 
     println!("In this example, we initialize and interact with an oblivious RAM storing u64s.");
-    println!("How many u64s would you like the ORAM to store?");
 
-    let capacity = parse_u64("Enter a power of two.", &mut rl)?;
+    let capacity = parse_u64("How many u64s would you like the ORAM to store?", &mut rl)?;
 
     // Initialize a Path ORAM storing `capacity` u64s.
     let mut oram =
