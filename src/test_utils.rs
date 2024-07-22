@@ -11,9 +11,20 @@
 use std::fmt::Debug;
 use std::sync::Once;
 static INIT: Once = Once::new();
+<<<<<<< HEAD
 use crate::path_oram::PathOram;
 use crate::StashSize;
 use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError, RecursionCutoff};
+=======
+use crate::bucket::Bucket;
+use crate::database::{CountAccessesDatabase, Database, SimpleDatabase};
+use crate::linear_time_oram::LinearTimeOram;
+use crate::path_oram::PathOram;
+use crate::path_oram::{DEFAULT_RECURSION_CUTOFF, DEFAULT_STASH_OVERFLOW_SIZE};
+use crate::StashSize;
+use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError, RecursionCutoff};
+use duplicate::duplicate_item;
+>>>>>>> 5b8cfc7 (Better parameter description.)
 use rand::{
     distributions::{Distribution, Standard},
     rngs::StdRng,
@@ -28,6 +39,30 @@ pub(crate) fn init_logger() {
     })
 }
 
+<<<<<<< HEAD
+=======
+pub trait Testable {
+    fn test_hook(&self) {}
+}
+
+#[duplicate_item(
+    database_type;
+    [SimpleDatabase];
+    [CountAccessesDatabase];
+)]
+impl<V: OramBlock> Testable for database_type<V> {}
+impl<DB> Testable for LinearTimeOram<DB> {}
+impl<
+        V: OramBlock,
+        const Z: BucketSize,
+        const AB: BlockSize,
+        const RT: RecursionCutoff,
+        const SO: StashSize,
+    > Testable for PathOram<V, Z, AB, RT, SO>
+{
+}
+
+>>>>>>> 5b8cfc7 (Better parameter description.)
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
 pub(crate) fn random_workload<V: OramBlock, T: Oram<V>>(capacity: Address, num_operations: usize)
 where
@@ -154,6 +189,7 @@ pub(crate) struct StashSizeMonitor<T> {
     oram: T,
 }
 
+<<<<<<< HEAD
 impl<
         V: OramBlock,
         const Z: BucketSize,
@@ -161,6 +197,15 @@ impl<
         const RT: RecursionCutoff,
         const SO: StashSize,
     > Oram<V> for StashSizeMonitor<PathOram<V, Z, AB, RT, SO>>
+=======
+impl<T> Testable for StashSizeMonitor<T> {}
+
+pub(crate) type VecStashSizeMonitor<V, const Z: BucketSize, const AB: BlockSize> =
+    StashSizeMonitor<PathOram<V, Z, AB, DEFAULT_RECURSION_CUTOFF, DEFAULT_STASH_OVERFLOW_SIZE>>;
+
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
+    for VecStashSizeMonitor<V, Z, AB>
+>>>>>>> 5b8cfc7 (Better parameter description.)
 {
     fn new<R: rand::RngCore + rand::CryptoRng>(
         block_capacity: Address,
@@ -171,9 +216,64 @@ impl<
         })
     }
 
+<<<<<<< HEAD
     fn block_capacity(&self) -> Result<Address, OramError> {
         self.oram.block_capacity()
     }
+=======
+#[derive(Debug)]
+pub(crate) struct ConstantOccupancyMonitor<T> {
+    oram: T,
+}
+
+impl<T> Testable for ConstantOccupancyMonitor<T> {}
+
+pub(crate) type VecConstantOccupancyMonitor<V, const Z: BucketSize, const AB: BlockSize> =
+    ConstantOccupancyMonitor<
+        PathOram<V, Z, AB, DEFAULT_RECURSION_CUTOFF, DEFAULT_STASH_OVERFLOW_SIZE>,
+    >;
+
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
+    for VecConstantOccupancyMonitor<V, Z, AB>
+{
+    monitor_boilerplate!();
+
+    fn access<R: rand::RngCore + rand::CryptoRng, F: Fn(&V) -> V>(
+        &mut self,
+        index: Address,
+        callback: F,
+        rng: &mut R,
+    ) -> Result<V, OramError> {
+        let result = self.oram.access(index, callback, rng);
+
+        let stash_occupancy = self.oram.stash.occupancy();
+
+        let tree_occupancy = self.oram.physical_memory.tree_occupancy();
+        assert_eq!(
+            stash_occupancy + tree_occupancy,
+            self.oram.block_capacity().unwrap()
+        );
+        result
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct PhysicalAccessCountMonitor<T> {
+    oram: T,
+}
+
+impl<T> Testable for PhysicalAccessCountMonitor<T> {}
+
+pub(crate) type VecPhysicalAccessCountMonitor<V, const Z: BucketSize, const AB: BlockSize> =
+    PhysicalAccessCountMonitor<
+        PathOram<V, Z, AB, DEFAULT_RECURSION_CUTOFF, DEFAULT_STASH_OVERFLOW_SIZE>,
+    >;
+
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V>
+    for VecPhysicalAccessCountMonitor<V, Z, AB>
+{
+    monitor_boilerplate!();
+>>>>>>> 5b8cfc7 (Better parameter description.)
 
     fn access<R: rand::RngCore + rand::CryptoRng, F: Fn(&V) -> V>(
         &mut self,
