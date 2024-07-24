@@ -1,5 +1,6 @@
 ## oram ![Build Status](https://github.com/facebook/oram/workflows/CI/badge.svg)
 
+<<<<<<< HEAD
 This library implements an Oblivious RAM (ORAM) for secure enclave applications.
 
 This crate assumes that ORAM clients are running inside a secure enclave architecture that provides memory encryption.
@@ -7,6 +8,26 @@ It does not perform encryption-on-write and thus is **not** secure without memor
 
 ⚠️ **Warning**: This implementation has not been audited and is not ready for use in a real system. Use at your own risk!
 
+=======
+This library implements an Oblivious RAM protocol (ORAM) for secure enclave applications.
+
+Background
+----------
+
+An ORAM is an indexed datastore that is backed by local memory,
+but hidden even from an attacker observing that memory.
+More precisely, an attacker outside the enclave can determine (by observing memory accesses)
+when an ORAM access occurs,
+but cannot learn anything about the access type (read versus write), the data read or written,
+or the index accessed. Using ORAM, an enclave application can safely make secret-dependent ORAM accesses.
+In contrast, secret-dependent *memory* accesses, even to encrypted memory, can leak enclave secrets.
+
+This crate assumes that ORAM clients are running inside a secure enclave architecture that provides memory encryption.
+such as [Intel SGX](https://www.intel.com/content/www/us/en/developer/tools/software-guard-extensions/overview.html)
+or [AMD SEV](https://www.amd.com/en/developer/sev.html).
+It does not perform encryption-on-write and thus is **not** secure without memory encryption.
+
+>>>>>>> aafe5d2 (Added to README)
 Documentation
 -------------
 
@@ -53,3 +74,4 @@ License
 This project is dual-licensed under either the [MIT license](https://github.com/facebook/oram/main/LICENSE-MIT)
 or the [Apache License, Version 2.0](https://github.com/facebook/oram/blob/main/LICENSE-APACHE).
 You may select, at your option, one of the above-listed licenses.
+
