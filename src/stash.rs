@@ -7,8 +7,8 @@
 
 //! A trait representing a Path ORAM stash.
 
-use super::{Bucket, PathOramBlock};
 use crate::{
+    bucket::{Bucket, PathOramBlock},
     database::Database,
     utils::{bitonic_sort_by_keys, CompleteBinaryTreeIndex, TreeIndex},
     Address, BucketSize, OramBlock, OramError,
@@ -17,55 +17,23 @@ use crate::{
 /// Numeric type used to represent the size of a Path ORAM stash in blocks.
 pub type StashSize = u64;
 
-/// A Path ORAM stash.
-pub trait Stash<V: OramBlock>
-where
-    Self: Sized,
-{
-    /// Creates a new stash capable of holding `capacity` blocks.
-    fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, OramError>;
-    /// Read blocks from the path specified by the leaf `position` in the tree `physical_memory` of height `height`
-    fn read_from_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
-        &mut self,
-        physical_memory: &mut T,
-        position: TreeIndex,
-    ) -> Result<(), OramError>;
-    /// Evict blocks from the stash to the path specified by the leaf `position` in the tree `physical_memory` of height `height`.
-    fn write_to_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
-        &mut self,
-        physical_memory: &mut T,
-        position: TreeIndex,
-    ) -> Result<(), OramError>;
-    /// Obliviously scans the stash for a block `b` with address `address`; if found, replaces that block with `callback(b)`.
-    fn access<F: Fn(&V) -> V>(
-        &mut self,
-        address: Address,
-        new_position: TreeIndex,
-        value_callback: F,
-    ) -> Result<V, OramError>;
-
-    #[cfg(test)]
-    /// The number of real (non-dummy) blocks in the stash.
-    fn occupancy(&self) -> StashSize;
-}
-
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 #[derive(Debug)]
 /// A fixed-size, obliviously accessed Path ORAM stash data structure implemented using oblivious sorting.
-pub struct BitonicStash<V: OramBlock> {
+pub struct ObliviousStash<V: OramBlock> {
     blocks: Vec<PathOramBlock<V>>,
     path_size: StashSize,
 }
 
-impl<V: OramBlock> BitonicStash<V> {
+impl<V: OramBlock> ObliviousStash<V> {
     fn len(&self) -> usize {
         self.blocks.len()
     }
 }
 
-impl<V: OramBlock> Stash<V> for BitonicStash<V> {
-    fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, OramError> {
+impl<V: OramBlock> ObliviousStash<V> {
+    pub fn new(path_size: StashSize, overflow_size: StashSize) -> Result<Self, OramError> {
         let num_stash_blocks: usize = (path_size + overflow_size).try_into()?;
 
         Ok(Self {
@@ -74,7 +42,7 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         })
     }
 
-    fn write_to_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
+    pub fn write_to_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
         &mut self,
         physical_memory: &mut T,
         position: TreeIndex,
@@ -167,7 +135,7 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         Ok(())
     }
 
-    fn access<F: Fn(&V) -> V>(
+    pub fn access<F: Fn(&V) -> V>(
         &mut self,
         address: Address,
         new_position: TreeIndex,
@@ -197,7 +165,7 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
     }
 
     #[cfg(test)]
-    fn occupancy(&self) -> StashSize {
+    pub fn occupancy(&self) -> StashSize {
         let mut result = 0;
         for i in self.path_size.try_into().unwrap()..(self.blocks.len()) {
             if !self.blocks[i].is_dummy() {
@@ -207,7 +175,10 @@ impl<V: OramBlock> Stash<V> for BitonicStash<V> {
         result
     }
 
-    fn read_from_path<const Z: crate::BucketSize, T: crate::database::Database<Bucket<V, Z>>>(
+    pub fn read_from_path<
+        const Z: crate::BucketSize,
+        T: crate::database::Database<Bucket<V, Z>>,
+    >(
         &mut self,
         physical_memory: &mut T,
         position: TreeIndex,

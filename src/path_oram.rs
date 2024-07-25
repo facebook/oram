@@ -5,16 +5,15 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! Contains an abstract implementation of Path ORAM that is generic over its stash and position map data structures.
+//! An implementation of Path ORAM.
 
 use super::{
     position_map::PositionMap,
-    stash::{Stash, StashSize},
-    Bucket, PathOramBlock,
+    stash::{ObliviousStash, StashSize},
 };
 use crate::{
+    bucket::{Bucket, PathOramBlock, PositionBlock, DEFAULT_BLOCKS_PER_BUCKET},
     database::{CountAccessesDatabase, Database},
-    path_oram::AddressOramBlock,
     utils::{
         invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
         CompleteBinaryTreeIndex, TreeHeight,
@@ -26,34 +25,21 @@ use std::mem;
 
 const OVERFLOW_SIZE: StashSize = 40;
 
-/// A Path ORAM which is generic over its stash and position map data structures.
+/// A doubly oblivious Path ORAM.
 #[derive(Debug)]
-pub struct GenericPathOram<
-    V: OramBlock,
-    const Z: BucketSize,
-    const AB: BlockSize,
-    P: PositionMap<AB>,
-    S: Stash<V>,
-> {
+pub struct PathOram<V: OramBlock, const Z: BucketSize, const AB: BlockSize> {
     // The fields below are not meant to be exposed to clients. They are public for benchmarking and testing purposes.
     /// The underlying untrusted memory that the ORAM is obliviously accessing on behalf of its client.
     pub physical_memory: CountAccessesDatabase<Bucket<V, Z>>,
     /// The Path ORAM stash.
-    pub stash: S,
+    pub stash: ObliviousStash<V>,
     /// The Path ORAM position map.
-    pub position_map: P,
+    pub position_map: PositionMap<AB, Z>,
     /// The height of the Path ORAM tree data structure.
     pub height: TreeHeight,
 }
 
-impl<
-        V: OramBlock,
-        const Z: BucketSize,
-        const AB: BlockSize,
-        P: PositionMap<AB> + std::fmt::Debug,
-        S: Stash<V> + std::fmt::Debug,
-    > Oram<V> for GenericPathOram<V, Z, AB, P, S>
-{
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V> for PathOram<V, Z, AB> {
     fn access<R: Rng + CryptoRng, F: Fn(&V) -> V>(
         &mut self,
         address: Address,
@@ -104,7 +90,7 @@ impl<
         let height: u64 = (block_capacity.ilog2() - 1).into();
 
         let path_size = u64::try_from(Z)? * (height + 1);
-        let stash = S::new(path_size, OVERFLOW_SIZE)?;
+        let stash = ObliviousStash::new(path_size, OVERFLOW_SIZE)?;
 
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
@@ -115,7 +101,7 @@ impl<
         // The rest of this function initializes the logical memory to contain default values at every address.
         // This is done by (1) initializing the position map with fresh random leaf identifiers,
         // and (2) writing blocks to the physical memory with the appropriate positions, and default values.
-        let mut position_map = P::new(block_capacity, rng)?;
+        let mut position_map = PositionMap::new(block_capacity, rng)?;
 
         let slot_indices_to_addresses =
             random_permutation_of_0_through_n_exclusive(block_capacity, rng);
@@ -159,7 +145,7 @@ impl<
                 data[i] =
                     (first_leaf_index + addresses_to_slot_indices[offset + i] / 2).try_into()?;
             }
-            let block = AddressOramBlock::<AB> { data };
+            let block = PositionBlock::<AB> { data };
             position_map.write_position_block(block_index * ab_address, block, rng)?;
         }
 
@@ -174,4 +160,83 @@ impl<
     fn block_capacity(&self) -> Result<Address, OramError> {
         self.physical_memory.capacity()
     }
+}
+
+/// A secure Path ORAM with a recursive position map and obliviously accessed stash.
+pub type ConcreteObliviousBlockOram<const B: BlockSize, V> =
+    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, B>;
+
+/// A specialization re
+pub type ConcreteObliviousAddressOram<const AB: BlockSize, V> =
+    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, AB>;
+
+// REVIEW NOTE: the below test modules are not new code.
+#[cfg(test)]
+mod block_oram_tests {
+    use bucket::BlockValue;
+    use path_oram::ConcreteObliviousBlockOram;
+
+    use super::PathOram;
+
+    use crate::test_utils::*;
+    use crate::*;
+    use core::iter::zip;
+
+    create_correctness_tests_for_oram_type!(ConcreteObliviousBlockOram, BlockValue);
+
+    // Test that the stash size is not growing too large.
+    type COBOStashSizeMonitor<const AB: BlockSize, V> =
+        StashSizeMonitor<ConcreteObliviousBlockOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(COBOStashSizeMonitor, BlockValue);
+
+    // Test that the total number of non-dummy blocks in the ORAM stays constant.
+    type COBOConstantOccupancyMonitor<const AB: BlockSize, V> =
+        ConstantOccupancyMonitor<ConcreteObliviousBlockOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(COBOConstantOccupancyMonitor, BlockValue);
+
+    // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
+    type COBOCountPhysicalAccessesMonitor<const AB: BlockSize, V> =
+        PhysicalAccessCountMonitor<ConcreteObliviousBlockOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(COBOCountPhysicalAccessesMonitor, BlockValue);
+
+    // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
+    #[derive(Debug)]
+    struct COBOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
+        oram: ConcreteObliviousBlockOram<B, V>,
+    }
+    create_statistics_test_for_oram_type!(COBOAccessDistributionTester, BlockValue);
+}
+
+#[cfg(test)]
+mod address_oram_tests {
+    use bucket::BlockValue;
+
+    use super::*;
+    use crate::*;
+    use crate::{test_utils::*, OramBlock};
+    use core::iter::zip;
+
+    create_correctness_tests_for_oram_type!(ConcreteObliviousAddressOram, PositionBlock);
+
+    // Test that the stash size is not growing too large.
+    type COAOStashSizeMonitor<const AB: BlockSize, V> =
+        StashSizeMonitor<ConcreteObliviousAddressOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(COAOStashSizeMonitor, PositionBlock);
+
+    // Test that the total number of non-dummy blocks in the ORAM stays constant.
+    type COAOConstantOccupancyMonitor<const AB: BlockSize, V> =
+        ConstantOccupancyMonitor<ConcreteObliviousAddressOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(COAOConstantOccupancyMonitor, PositionBlock);
+
+    // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
+    type COAOPhysicalAccessCountMonitor<const AB: BlockSize, V> =
+        PhysicalAccessCountMonitor<ConcreteObliviousAddressOram<AB, V>>;
+    create_correctness_tests_for_oram_type!(COAOPhysicalAccessCountMonitor, PositionBlock);
+
+    // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
+    #[derive(Debug)]
+    struct COAOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
+        oram: ConcreteObliviousAddressOram<B, V>,
+    }
+    create_statistics_test_for_oram_type!(COAOAccessDistributionTester, BlockValue);
 }

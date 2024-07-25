@@ -30,12 +30,12 @@
 //!
 //! ```
 //! use rand::rngs::OsRng;
-//! use oram::{Oram, DefaultPathOram};
+//! use oram::{Oram, PathOram, bucket::DEFAULT_BLOCKS_PER_BUCKET};
 //! # use oram::OramError;
 //!
 //! let capacity = 64;
 //! let mut rng = OsRng;
-//! let mut oram = DefaultPathOram::<u8>::new(capacity, &mut rng)?;
+//! let mut oram = PathOram::<u8, DEFAULT_BLOCKS_PER_BUCKET, 64>::new(capacity, &mut rng)?;
 //! oram.write(1, 42u8, &mut rng)?;
 //! assert_eq!(oram.read(1, &mut rng)?, 42u8);
 //! # Ok::<(), OramError>(())
@@ -46,22 +46,20 @@
 use std::num::TryFromIntError;
 
 use rand::{CryptoRng, RngCore};
-use subtle::{Choice, ConditionallySelectable};
+use subtle::ConditionallySelectable;
 use thiserror::Error;
 
+pub mod bucket;
 pub mod database;
 pub mod linear_time_oram;
 pub mod path_oram;
+pub(crate) mod position_map;
+pub(crate) mod stash;
 #[cfg(test)]
 mod test_utils;
 pub(crate) mod utils;
 
-pub use crate::path_oram::recursive_secure_path_oram::DefaultPathOram;
-
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
+pub use crate::path_oram::PathOram;
 
 /// The numeric type used to specify the size of an ORAM block in bytes.
 pub type BlockSize = usize;
@@ -143,45 +141,5 @@ where
         log::debug!("ORAM write: {}", index);
         let callback = |_: &V| new_value;
         self.access(index, callback, rng)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[repr(align(64))]
-/// An `OramBlock` consisting of unstructured bytes.
-pub struct BlockValue<const B: BlockSize>([u8; B]);
-
-impl<const B: BlockSize> BlockValue<B> {
-    /// Instantiates a `BlockValue` from an array of `BLOCK_SIZE` bytes.
-    pub fn new(data: [u8; B]) -> Self {
-        Self(data)
-    }
-}
-
-impl<const B: BlockSize> Default for BlockValue<B> {
-    fn default() -> Self {
-        BlockValue::<B>([0u8; B])
-    }
-}
-
-impl<const B: BlockSize> OramBlock for BlockValue<B> {}
-
-impl<const B: BlockSize> ConditionallySelectable for BlockValue<B> {
-    fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-        let mut result = BlockValue::default();
-        for i in 0..B {
-            result.0[i] = u8::conditional_select(&a.0[i], &b.0[i], choice);
-        }
-        result
-    }
-}
-
-impl<const B: BlockSize> Distribution<BlockValue<B>> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue<B> {
-        let mut result = BlockValue::default();
-        for i in 0..B {
-            result.0[i] = rng.gen();
-        }
-        result
     }
 }
