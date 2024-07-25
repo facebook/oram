@@ -20,10 +20,6 @@ use crate::BucketSize;
 use crate::{utils::TreeIndex, Address};
 use subtle::ConstantTimeEq;
 
-/// The parameter "Z" from the Path ORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
-/// Here we adopt the more conservative setting of 4.
-pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSize = 4;
-
 // REVIEW NOTE: the rest of this module is not new code. It was moved from lib.rs and path_oram/mod.rs.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(align(64))]

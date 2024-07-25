@@ -12,7 +12,7 @@ use super::{
     stash::{ObliviousStash, StashSize},
 };
 use crate::{
-    bucket::{Bucket, PathOramBlock, PositionBlock, DEFAULT_BLOCKS_PER_BUCKET},
+    bucket::{Bucket, PathOramBlock, PositionBlock},
     database::{CountAccessesDatabase, Database},
     utils::{
         invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
@@ -23,23 +23,53 @@ use crate::{
 use rand::{CryptoRng, Rng};
 use std::mem;
 
+/// The numeric type used to specify the cutoff size
+/// below which `PathOram` uses a linear position map instead of a recursive one.
+pub type RecursionThreshold = u64;
+
+/// The default cutoff size in blocks
+/// below which `PathOram` uses a linear position map instead of a recursive one.
+pub const DEFAULT_RECURSION_THRESHOLD: u64 = 1 << 12;
+
+/// The parameter "Z" from the Path ORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
+/// Here we adopt the more conservative setting of 4.
+pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSize = 4;
+
+/// The default number of positions stored per position block.
+pub const DEFAULT_POSITION_BLOCK_SIZE: BlockSize = 4096;
+
 const OVERFLOW_SIZE: StashSize = 40;
 
 /// A doubly oblivious Path ORAM.
 #[derive(Debug)]
-pub struct PathOram<V: OramBlock, const Z: BucketSize, const AB: BlockSize> {
+pub struct PathOram<
+    V: OramBlock,
+    const Z: BucketSize,
+    const AB: BlockSize,
+    const RT: RecursionThreshold,
+> {
     // The fields below are not meant to be exposed to clients. They are public for benchmarking and testing purposes.
     /// The underlying untrusted memory that the ORAM is obliviously accessing on behalf of its client.
     pub physical_memory: CountAccessesDatabase<Bucket<V, Z>>,
     /// The Path ORAM stash.
     pub stash: ObliviousStash<V>,
     /// The Path ORAM position map.
-    pub position_map: PositionMap<AB, Z>,
+    pub position_map: PositionMap<AB, Z, RT>,
     /// The height of the Path ORAM tree data structure.
     pub height: TreeHeight,
 }
 
-impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V> for PathOram<V, Z, AB> {
+/// An `Oram` suitable for most use cases, with reasonable default choices of parameters.
+pub type DefaultOram<V> = PathOram<
+    V,
+    DEFAULT_BLOCKS_PER_BUCKET,
+    DEFAULT_POSITION_BLOCK_SIZE,
+    DEFAULT_RECURSION_THRESHOLD,
+>;
+
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize, const RT: RecursionThreshold> Oram<V>
+    for PathOram<V, Z, AB, RT>
+{
     fn access<R: Rng + CryptoRng, F: Fn(&V) -> V>(
         &mut self,
         address: Address,
@@ -164,11 +194,11 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram<V> for PathOra
 
 /// A secure Path ORAM with a recursive position map and obliviously accessed stash.
 pub type ConcreteObliviousBlockOram<const B: BlockSize, V> =
-    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, B>;
+    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, B, DEFAULT_RECURSION_THRESHOLD>;
 
 /// A specialization re
 pub type ConcreteObliviousAddressOram<const AB: BlockSize, V> =
-    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, AB>;
+    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, AB, DEFAULT_RECURSION_THRESHOLD>;
 
 // REVIEW NOTE: the below test modules are not new code.
 #[cfg(test)]
