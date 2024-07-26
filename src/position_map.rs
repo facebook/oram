@@ -12,25 +12,10 @@ use crate::bucket::PositionBlock;
 use crate::StashSize;
 use crate::{
     linear_time_oram::LinearTimeOram, utils::TreeIndex, Address, BlockSize, BucketSize, Oram,
-    OramBlock,
 };
 use crate::{OramError, RecursionCutoff};
-use log::debug;
 use rand::{CryptoRng, RngCore};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
-
-impl<
-        const AB: BlockSize,
-        V: OramBlock,
-        const Z: BucketSize,
-        const RT: RecursionCutoff,
-        const SO: StashSize,
-    > PathOram<V, Z, AB, RT, SO>
-{
-    pub(crate) fn recursion_height(&self) -> usize {
-        self.position_map.recursion_height()
-    }
-}
 
 /// A recursive Path ORAM position map data structure. `AB` is the number of addresses stored in each ORAM block.
 #[derive(Debug)]
@@ -48,13 +33,6 @@ pub enum PositionMap<
 impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const SO: StashSize>
     PositionMap<AB, Z, RT, SO>
 {
-    pub(crate) fn recursion_height(&self) -> usize {
-        match self {
-            PositionMap::Base(_) => 0,
-            PositionMap::Recursive(inner) => 1 + inner.recursion_height(),
-        }
-    }
-
     fn address_of_block(address: Address) -> Address {
         let block_address_bits = AB.ilog2();
         address >> block_address_bits
@@ -99,9 +77,9 @@ impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const 
         number_of_addresses: Address,
         rng: &mut R,
     ) -> Result<Self, OramError> {
-        debug!(
-            "Oram::new -- AddressOram(B = {}, Z = {}, C = {})",
-            AB, Z, number_of_addresses
+        log::info!(
+            "PositionMap::new(number_of_addresses = {})",
+            number_of_addresses
         );
 
         if (AB < 2) | (!AB.is_power_of_two()) {
@@ -132,38 +110,6 @@ impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const 
                 Ok(block_oram.block_capacity()? * ab_address)
             }
         }
-    }
-
-    // Overwriting default method for logging purposes.
-    fn read<R: RngCore + CryptoRng>(
-        &mut self,
-        index: Address,
-        rng: &mut R,
-    ) -> Result<TreeIndex, OramError> {
-        log::debug!(
-            "Level {} AddressORAM read: {}",
-            self.recursion_height(),
-            index
-        );
-        let callback = |x: &TreeIndex| *x;
-        self.access(index, callback, rng)
-    }
-
-    // Overwriting default method for logging purposes.
-    /// Obliviously writes the value stored at `index`. Returns the value previously stored at `index`.
-    fn write<R: RngCore + CryptoRng>(
-        &mut self,
-        index: Address,
-        new_value: TreeIndex,
-        rng: &mut R,
-    ) -> Result<TreeIndex, OramError> {
-        log::debug!(
-            "Level {} AddressORAM write: {}",
-            self.recursion_height(),
-            index
-        );
-        let callback = |_: &TreeIndex| new_value;
-        self.access(index, callback, rng)
     }
 
     fn access<R: RngCore + CryptoRng, F: Fn(&TreeIndex) -> TreeIndex>(

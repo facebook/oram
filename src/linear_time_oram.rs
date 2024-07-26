@@ -21,6 +21,8 @@ pub struct LinearTimeOram<V: OramBlock> {
 
 impl<V: OramBlock> Oram<V> for LinearTimeOram<V> {
     fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Result<Self, OramError> {
+        log::info!("LinearTimeOram::new(capacity = {})", block_capacity,);
+
         let mut physical_memory = Vec::new();
         physical_memory.resize(usize::try_from(block_capacity)?, V::default());
         Ok(Self { physical_memory })
