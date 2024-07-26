@@ -9,7 +9,6 @@
 
 use crate::{
     bucket::{Bucket, PathOramBlock},
-    database::Database,
     utils::{bitonic_sort_by_keys, CompleteBinaryTreeIndex, TreeIndex},
     Address, BucketSize, OramBlock, OramError, StashSize,
 };
@@ -41,9 +40,9 @@ impl<V: OramBlock> ObliviousStash<V> {
         })
     }
 
-    pub fn write_to_path<const Z: BucketSize, T: Database<Bucket<V, Z>>>(
+    pub fn write_to_path<const Z: BucketSize>(
         &mut self,
-        physical_memory: &mut T,
+        physical_memory: &mut [Bucket<V, Z>],
         position: TreeIndex,
     ) -> Result<(), OramError> {
         let height = position.ct_depth();
@@ -141,7 +140,7 @@ impl<V: OramBlock> ObliviousStash<V> {
                 new_bucket.blocks[slot_number] = self.blocks[stash_index];
             }
 
-            physical_memory.write_db(position.node_on_path(depth, height), new_bucket)?;
+            physical_memory[usize::try_from(position.node_on_path(depth, height))?] = new_bucket;
         }
 
         Ok(())
@@ -187,19 +186,16 @@ impl<V: OramBlock> ObliviousStash<V> {
         result
     }
 
-    pub fn read_from_path<
-        const Z: crate::BucketSize,
-        T: crate::database::Database<Bucket<V, Z>>,
-    >(
+    pub fn read_from_path<const Z: crate::BucketSize>(
         &mut self,
-        physical_memory: &mut T,
+        physical_memory: &mut [Bucket<V, Z>],
         position: TreeIndex,
     ) -> Result<(), OramError> {
         let height = position.ct_depth();
 
         for i in (0..(self.path_size / u64::try_from(Z)?)).rev() {
             let bucket_index = position.node_on_path(i, height);
-            let bucket = physical_memory.read_db(bucket_index)?;
+            let bucket = physical_memory[usize::try_from(bucket_index)?];
             for slot_index in 0..Z {
                 self.blocks[Z * (usize::try_from(i)?) + slot_index] = bucket.blocks[slot_index];
             }

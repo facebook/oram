@@ -7,7 +7,6 @@
 
 //! A simple linear-time implementation of Oblivious RAM.
 
-use crate::database::Database;
 use crate::{Address, Oram, OramBlock, OramError};
 use rand::{CryptoRng, RngCore};
 use subtle::{ConstantTimeEq, ConstantTimeLess};
@@ -15,16 +14,16 @@ use subtle::{ConstantTimeEq, ConstantTimeLess};
 /// A simple ORAM that, for each access, ensures obliviousness by making a complete pass over the database,
 /// reading and writing each memory location.
 #[derive(Debug)]
-pub struct LinearTimeOram<DB> {
+pub struct LinearTimeOram<V: OramBlock> {
     /// The memory of the ORAM (public for benchmarking).
-    pub physical_memory: DB,
+    pub physical_memory: Vec<V>,
 }
 
-impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
+impl<V: OramBlock> Oram<V> for LinearTimeOram<V> {
     fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Result<Self, OramError> {
-        Ok(Self {
-            physical_memory: DB::new(block_capacity)?,
-        })
+        let mut physical_memory = Vec::new();
+        physical_memory.resize(usize::try_from(block_capacity)?, V::default());
+        Ok(Self { physical_memory })
     }
 
     fn access<R: RngCore + CryptoRng, F: Fn(&V) -> V>(
@@ -43,33 +42,29 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
         // This is a dummy value which will always be overwritten.
         let mut result = V::default();
 
-        for i in 0..self.block_capacity()? {
-            let entry = self.physical_memory.read_db(i)?;
+        for i in 0..self.physical_memory.len() {
+            let entry = &self.physical_memory[i];
 
-            let is_requested_index = i.ct_eq(&index);
+            let is_requested_index = (u64::try_from(i)?).ct_eq(&index);
 
-            result.conditional_assign(&entry, is_requested_index);
+            result.conditional_assign(entry, is_requested_index);
 
-            let potentially_updated_value =
-                V::conditional_select(&entry, &callback(&entry), is_requested_index);
+            let potential_new_value = callback(entry);
 
-            self.physical_memory
-                .write_db(i, potentially_updated_value)?;
+            self.physical_memory[i].conditional_assign(&potential_new_value, is_requested_index);
         }
         Ok(result)
     }
 
     fn block_capacity(&self) -> Result<Address, OramError> {
-        self.physical_memory.capacity()
+        Ok(u64::try_from(self.physical_memory.len())?)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{bucket::BlockValue, database::CountAccessesDatabase, test_utils::*};
+    use crate::{bucket::BlockValue, test_utils::*};
 
-    type ConcreteLinearTimeOram<V> = LinearTimeOram<CountAccessesDatabase<V>>;
-
-    create_correctness_tests_for_oram_type!(ConcreteLinearTimeOram);
+    create_correctness_tests_for_oram_type!(LinearTimeOram);
 }
