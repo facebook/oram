@@ -67,9 +67,9 @@ impl<V: OramBlock, DB: Database<V>> Oram<V> for LinearTimeOram<DB> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{bucket::BlockValue, database::CountAccessesDatabase, test_utils::*, BlockSize};
+    use crate::{bucket::BlockValue, database::CountAccessesDatabase, test_utils::*};
 
-    type ConcreteLinearTimeOram<const B: BlockSize, V> = LinearTimeOram<CountAccessesDatabase<V>>;
+    type ConcreteLinearTimeOram<V> = LinearTimeOram<CountAccessesDatabase<V>>;
 
-    create_correctness_tests_for_oram_type!(ConcreteLinearTimeOram, BlockValue);
+    create_correctness_tests_for_oram_type!(ConcreteLinearTimeOram);
 }

@@ -22,14 +22,14 @@ use std::mem;
 
 /// The default cutoff size in blocks
 /// below which `PathOram` uses a linear position map instead of a recursive one.
-pub const DEFAULT_RECURSION_CUTOFF: RecursionCutoff = 1 << 12;
+pub const DEFAULT_RECURSION_CUTOFF: RecursionCutoff = 1 << 14;
 
 /// The parameter "Z" from the Path ORAM literature that sets the number of blocks per bucket; typical values are 3 or 4.
 /// Here we adopt the more conservative setting of 4.
 pub const DEFAULT_BLOCKS_PER_BUCKET: BucketSize = 4;
 
 /// The default number of positions stored per position block.
-pub const DEFAULT_POSITIONS_PER_BLOCK: BlockSize = 512;
+pub const DEFAULT_POSITIONS_PER_BLOCK: BlockSize = 8;
 
 /// The default number of overflow blocks that the Path ORAM stash (and recursive stashes) can store.
 pub const DEFAULT_STASH_OVERFLOW_SIZE: StashSize = 40;
@@ -229,86 +229,36 @@ impl<
 }
 
 #[cfg(test)]
-mod block_oram_tests {
+mod tests {
     use bucket::BlockValue;
 
     use super::*;
 
     use crate::test_utils::*;
     use crate::*;
-    use core::iter::zip;
 
-    pub type ConcreteObliviousBlockOram<const B: BlockSize, V> = PathOram<
-        V,
-        DEFAULT_BLOCKS_PER_BUCKET,
-        B,
-        DEFAULT_RECURSION_CUTOFF,
-        DEFAULT_STASH_OVERFLOW_SIZE,
-    >;
+    // Test default parameters. For the small capacity used in the tests, this means a linear position map.
+    create_correctness_tests_for_oram_type!(DefaultOram);
 
-    create_correctness_tests_for_oram_type!(ConcreteObliviousBlockOram, BlockValue);
+    // The remaining tests have RECURSION_CUTOFF = 1 in order to test the recursive position map.
 
-    // Test that the stash size is not growing too large.
-    type COBOStashSizeMonitor<const AB: BlockSize, V> =
-        StashSizeMonitor<ConcreteObliviousBlockOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(COBOStashSizeMonitor, BlockValue);
+    // Default parameters, but with RECURSION_CUTOFF = 1.
+    create_correctness_tests_for_path_oram!(4, 8, 1, 40);
 
-    // Test that the total number of non-dummy blocks in the ORAM stays constant.
-    type COBOConstantOccupancyMonitor<const AB: BlockSize, V> =
-        ConstantOccupancyMonitor<ConcreteObliviousBlockOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(COBOConstantOccupancyMonitor, BlockValue);
+    // Test small initial stash sizes and correct resizing of stash on overflow.
+    create_correctness_tests_for_path_oram!(4, 8, 1, 10);
+    create_correctness_tests_for_path_oram!(4, 8, 1, 0);
 
-    // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
-    type COBOCountPhysicalAccessesMonitor<const AB: BlockSize, V> =
-        PhysicalAccessCountMonitor<ConcreteObliviousBlockOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(COBOCountPhysicalAccessesMonitor, BlockValue);
+    // Test small and large bucket sizes.
+    create_correctness_tests_for_path_oram!(3, 8, 1, 40);
+    create_correctness_tests_for_path_oram!(5, 8, 1, 40);
 
-    // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
-    #[derive(Debug)]
-    struct COBOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
-        oram: ConcreteObliviousBlockOram<B, V>,
-    }
-    create_statistics_test_for_oram_type!(COBOAccessDistributionTester, BlockValue);
-}
+    // Test small and large position map blocks.
+    create_correctness_tests_for_path_oram!(4, 2, 1, 40);
+    create_correctness_tests_for_path_oram!(4, 64, 1, 40);
 
-#[cfg(test)]
-mod address_oram_tests {
-    use bucket::BlockValue;
+    // "Running sanity checks" for the default parameters.
 
-    use super::*;
-    use crate::*;
-    use crate::{test_utils::*, OramBlock};
-    use core::iter::zip;
-
-    type ConcreteObliviousAddressOram<const AB: BlockSize, V> = PathOram<
-        V,
-        DEFAULT_BLOCKS_PER_BUCKET,
-        AB,
-        DEFAULT_RECURSION_CUTOFF,
-        DEFAULT_STASH_OVERFLOW_SIZE,
-    >;
-
-    create_correctness_tests_for_oram_type!(ConcreteObliviousAddressOram, PositionBlock);
-
-    // Test that the stash size is not growing too large.
-    type COAOStashSizeMonitor<const AB: BlockSize, V> =
-        StashSizeMonitor<ConcreteObliviousAddressOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(COAOStashSizeMonitor, PositionBlock);
-
-    // Test that the total number of non-dummy blocks in the ORAM stays constant.
-    type COAOConstantOccupancyMonitor<const AB: BlockSize, V> =
-        ConstantOccupancyMonitor<ConcreteObliviousAddressOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(COAOConstantOccupancyMonitor, PositionBlock);
-
-    // Test that the number of physical accesses resulting from ORAM accesses is exactly as expected.
-    type COAOPhysicalAccessCountMonitor<const AB: BlockSize, V> =
-        PhysicalAccessCountMonitor<ConcreteObliviousAddressOram<AB, V>>;
-    create_correctness_tests_for_oram_type!(COAOPhysicalAccessCountMonitor, PositionBlock);
-
-    // Test that the distribution of ORAM accesses across leaves is close to the expected (uniform) distribution.
-    #[derive(Debug)]
-    struct COAOAccessDistributionTester<const B: BlockSize, V: OramBlock> {
-        oram: ConcreteObliviousAddressOram<B, V>,
-    }
-    create_statistics_test_for_oram_type!(COAOAccessDistributionTester, BlockValue);
+    // Check that the stash size stays reasonably small over the test runs.
+    create_stash_size_tests!(DefaultOram);
 }
