@@ -58,25 +58,30 @@ impl<V: OramBlock> ObliviousStash<V> {
             let block_position =
                 TreeIndex::conditional_select(&block.position, &an_arbitrary_leaf, block_is_dummy);
 
-            let block_level: u64 = block_position
-                .ct_common_ancestor_of_two_leaves(position)
-                .ct_depth();
+            // Assign the block to a bucket or to the overflow.
+            let mut assigned = Choice::from(0);
+            // Obliviously scan through the buckets from leaf to root,
+            // assigning the block to the first empty bucket satisfying the invariant.
+            for (level, count) in level_counts.iter_mut().enumerate().rev() {
+                let level_bucket_full: Choice = count.ct_eq(&(u64::try_from(Z)?));
 
-            // Obliviously scan through the buckets, assigning the block to the correct one, or to the overflow.
-            for (level, count) in level_counts.iter_mut().enumerate() {
-                let block_level_bucket_full: Choice = count.ct_eq(&(u64::try_from(Z)?));
-                let correct_level = level.ct_eq(&(usize::try_from(block_level))?);
+                let level_u64 = u64::try_from(level)?;
+                let level_satisfies_invariant = block_position
+                    .ct_node_on_path(level_u64, height)
+                    .ct_eq(&position.ct_node_on_path(level_u64, height));
 
-                // If the bucket `block` should go in is full, assign the block to the overflow.
-                let should_overflow = correct_level & block_level_bucket_full & (!block_is_dummy);
-                level_assignments[i].conditional_assign(&(TreeIndex::MAX - 1), should_overflow);
+                let should_assign = level_satisfies_invariant
+                    & (!level_bucket_full)
+                    & (!block_is_dummy)
+                    & (!assigned);
+                assigned |= should_assign;
 
-                // Otherwise, assign
-                let should_assign = correct_level & (!block_level_bucket_full) & (!block_is_dummy);
                 let level_count_incremented = *count + 1;
                 count.conditional_assign(&level_count_incremented, should_assign);
-                level_assignments[i].conditional_assign(&block_level, should_assign);
+                level_assignments[i].conditional_assign(&level_u64, should_assign);
             }
+            // If the block was not able to be assigned to any bucket, assign it to the overflow.
+            level_assignments[i].conditional_assign(&(TreeIndex::MAX - 1), !assigned);
         }
 
         // Assign dummy blocks to the remaining non-full buckets until all buckets are full.
@@ -145,7 +150,7 @@ impl<V: OramBlock> ObliviousStash<V> {
                 new_bucket.blocks[slot_number] = self.blocks[stash_index];
             }
 
-            physical_memory[usize::try_from(position.node_on_path(depth, height))?] = new_bucket;
+            physical_memory[usize::try_from(position.ct_node_on_path(depth, height))?] = new_bucket;
         }
 
         Ok(())
@@ -199,7 +204,7 @@ impl<V: OramBlock> ObliviousStash<V> {
         let height = position.ct_depth();
 
         for i in (0..(self.path_size / u64::try_from(Z)?)).rev() {
-            let bucket_index = position.node_on_path(i, height);
+            let bucket_index = position.ct_node_on_path(i, height);
             let bucket = physical_memory[usize::try_from(bucket_index)?];
             for slot_index in 0..Z {
                 self.blocks[Z * (usize::try_from(i)?) + slot_index] = bucket.blocks[slot_index];
