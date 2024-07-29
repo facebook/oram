@@ -2,9 +2,6 @@
 
 This library implements an Oblivious RAM (ORAM) for secure enclave applications.
 
-ORAM can be used to reduce the information (including memory access patterns)
-visible to an attacker who has access to the enclave's host system.
-
 This crate assumes that ORAM clients are running inside a secure enclave architecture that provides memory encryption.
 It does not perform encryption-on-write and thus is **not** secure without memory encryption.
 
