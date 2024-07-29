@@ -125,6 +125,11 @@ impl<V: OramBlock> ObliviousStash<V> {
                     level_assignments.len() + STASH_GROWTH_INCREMENT,
                     TreeIndex::MAX,
                 );
+
+                log::warn!(
+                    "Stash overflow occurred. Stash resized to {} blocks.",
+                    self.blocks.len()
+                );
             }
         }
 

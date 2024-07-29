@@ -22,9 +22,15 @@ use rand::{
 use simplelog::{Config, WriteLogger};
 
 // For use in manual testing and inspection.
+// Change log_level to "Warn" to see stash overflow events, and to "Debug" to additionally see ORAM initialization events.
 pub(crate) fn init_logger() {
     INIT.call_once(|| {
-        WriteLogger::init(log::LevelFilter::Info, Config::default(), std::io::stdout()).unwrap()
+        WriteLogger::init(
+            log::LevelFilter::Error,
+            Config::default(),
+            std::io::stdout(),
+        )
+        .unwrap()
     })
 }
 

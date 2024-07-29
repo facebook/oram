@@ -185,7 +185,6 @@ where
         index: Address,
         rng: &mut R,
     ) -> Result<V, OramError> {
-        log::debug!("ORAM read: {}", index);
         let callback = |x: &V| *x;
         self.access(index, callback, rng)
     }
@@ -197,7 +196,6 @@ where
         new_value: V,
         rng: &mut R,
     ) -> Result<V, OramError> {
-        log::debug!("ORAM write: {}", index);
         let callback = |_: &V| new_value;
         self.access(index, callback, rng)
     }

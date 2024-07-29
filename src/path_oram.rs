@@ -17,7 +17,6 @@ use crate::{
     Address, BlockSize, BucketSize, Oram, OramBlock, OramError, RecursionCutoff, StashSize,
 };
 use rand::{CryptoRng, Rng};
-use std::mem;
 
 /// The default cutoff size in blocks
 /// below which `PathOram` uses a linear position map instead of a recursive one.
@@ -139,12 +138,7 @@ impl<
     }
 
     fn new<R: Rng + CryptoRng>(block_capacity: Address, rng: &mut R) -> Result<Self, OramError> {
-        log::debug!(
-            "Oram::new -- BlockOram(B = {}, Z = {}, C = {})",
-            mem::size_of::<V>(),
-            Z,
-            block_capacity
-        );
+        log::info!("PathOram::new(capacity = {})", block_capacity,);
 
         if !block_capacity.is_power_of_two() | (block_capacity <= 1) {
             return Err(OramError::InvalidConfigurationError);
