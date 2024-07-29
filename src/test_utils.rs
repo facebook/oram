@@ -12,8 +12,9 @@ use std::fmt::Debug;
 use std::sync::Once;
 static INIT: Once = Once::new();
 use crate::path_oram::PathOram;
-use crate::StashSize;
-use crate::{Address, BlockSize, BucketSize, Oram, OramBlock, OramError, RecursionCutoff};
+use crate::{
+    Address, BlockSize, BucketSize, Oram, OramBlock, OramError, RecursionCutoff, StashSize,
+};
 use rand::{
     distributions::{Distribution, Standard},
     rngs::StdRng,
@@ -35,19 +36,19 @@ pub(crate) fn init_logger() {
 }
 
 /// Tests the correctness of an `ORAM` implementation T on a workload of random reads and writes.
-pub(crate) fn random_workload<V: OramBlock, T: Oram<V>>(capacity: Address, num_operations: usize)
+pub(crate) fn random_workload<T: Oram>(oram: &mut T, num_operations: usize)
 where
-    Standard: Distribution<V>,
+    Standard: Distribution<T::V>,
 {
     init_logger();
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut oram = T::new(capacity, &mut rng).unwrap();
-    let mut mirror_array = vec![V::default(); usize::try_from(capacity).unwrap()];
+    let capacity = oram.block_capacity().unwrap();
+    let mut mirror_array = vec![T::V::default(); usize::try_from(capacity).unwrap()];
 
     for _ in 0..num_operations {
         let random_index = rng.gen_range(0..capacity);
-        let random_block_value = rng.gen::<V>();
+        let random_block_value = rng.gen::<T::V>();
 
         let read_versus_write = rng.gen::<bool>();
 
@@ -73,23 +74,21 @@ where
 }
 
 /// Tests the correctness of an `Oram` type T on repeated passes of sequential accesses 0, 1, ..., `capacity`
-pub(crate) fn linear_workload<V: OramBlock, T: Oram<V> + Debug>(
-    capacity: Address,
-    num_operations: u64,
-) where
-    Standard: Distribution<V>,
+pub(crate) fn linear_workload<T: Oram + Debug>(oram: &mut T, num_operations: u64)
+where
+    Standard: Distribution<T::V>,
 {
     init_logger();
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut oram = T::new(capacity, &mut rng).unwrap();
-    let mut mirror_array = vec![V::default(); usize::try_from(capacity).unwrap()];
+    let capacity = oram.block_capacity().unwrap();
+    let mut mirror_array = vec![T::V::default(); usize::try_from(capacity).unwrap()];
 
     let num_passes = num_operations / capacity;
 
     for _ in 0..num_passes {
         for index in 0..capacity {
-            let random_block_value = rng.gen::<V>();
+            let random_block_value = rng.gen::<T::V>();
 
             let read_versus_write: bool = rng.gen::<bool>();
 
@@ -114,68 +113,139 @@ pub(crate) fn linear_workload<V: OramBlock, T: Oram<V> + Debug>(
     }
 }
 
-macro_rules! create_correctness_test {
-    ($function_name:ident, $oram_type: ident, $block_size: expr, $block_capacity:expr, $iterations_to_test: expr) => {
+macro_rules! create_path_oram_correctness_tests_all_parameters {
+    ($oram_type: ident, $prefix: literal, $block_capacity: expr, $block_size: expr, $bucket_size: expr, $position_block_size: expr, $overflow_size: expr, $recursion_cutoff: expr, $iterations_to_test: expr) => {
         paste::paste! {
             #[test]
-            fn [<$function_name _ $oram_type:snake _ $block_capacity _ $block_size _ $iterations_to_test>]() {
-                $function_name::<BlockValue<$block_size>, $oram_type<BlockValue<$block_size>>>($block_capacity, $iterations_to_test);
+            fn [<"linear_workload" $prefix $block_capacity _ $block_size _ $bucket_size _ $position_block_size _ $overflow_size _ $recursion_cutoff>]() {
+                let mut rng = StdRng::seed_from_u64(1);
+                let mut oram = $oram_type::<BlockValue<$block_size>, $bucket_size, $position_block_size>::new_with_parameters($block_capacity, &mut rng, $overflow_size, $recursion_cutoff).unwrap();
+                linear_workload(&mut oram, $iterations_to_test);
+            }
+
+            #[test]
+            fn [<"random_workload" $prefix $block_capacity _ $block_size _ $bucket_size _ $position_block_size _ $overflow_size _ $recursion_cutoff>]() {
+                let mut rng = StdRng::seed_from_u64(1);
+                let mut oram = $oram_type::<BlockValue<$block_size>, $bucket_size, $position_block_size>::new_with_parameters($block_capacity, &mut rng, $overflow_size, $recursion_cutoff).unwrap();
+                random_workload(&mut oram, $iterations_to_test);
             }
         }
     };
 }
 
-macro_rules! create_correctness_tests_for_workload_and_oram_type {
-    ($function_name: ident, $oram_type: ident) => {
-        create_correctness_test!($function_name, $oram_type, 2, 2, 10);
-        create_correctness_test!($function_name, $oram_type, 4, 8, 100);
-        create_correctness_test!($function_name, $oram_type, 2, 8, 100);
-        create_correctness_test!($function_name, $oram_type, 8, 8, 100);
-        create_correctness_test!($function_name, $oram_type, 4, 16, 100);
-        create_correctness_test!($function_name, $oram_type, 4, 32, 100);
-        // Block size 16 bytes, block capacity 64 blocks, testing with 100 operations
-        create_correctness_test!($function_name, $oram_type, 16, 64, 100);
-        create_correctness_test!($function_name, $oram_type, 2, 8, 1000);
+macro_rules! create_path_oram_correctness_tests_helper {
+    ($oram_type: ident, $prefix: literal, $bucket_size: expr, $position_block_size: expr, $recursion_cutoff: expr, $overflow_size: expr) => {
+        create_path_oram_correctness_tests_all_parameters!(
+            $oram_type,
+            $prefix,
+            8,
+            1,
+            $bucket_size,
+            $position_block_size,
+            $overflow_size,
+            $recursion_cutoff,
+            100
+        );
+        create_path_oram_correctness_tests_all_parameters!(
+            $oram_type,
+            $prefix,
+            4,
+            1,
+            $bucket_size,
+            $position_block_size,
+            $overflow_size,
+            $recursion_cutoff,
+            100
+        );
+        // Block size 4 blocks, block size 2 bytes, testing with 100 operations
+        create_path_oram_correctness_tests_all_parameters!(
+            $oram_type,
+            $prefix,
+            4,
+            2,
+            $bucket_size,
+            $position_block_size,
+            $overflow_size,
+            $recursion_cutoff,
+            100
+        );
+        create_path_oram_correctness_tests_all_parameters!(
+            $oram_type,
+            $prefix,
+            16,
+            1,
+            $bucket_size,
+            $position_block_size,
+            $overflow_size,
+            $recursion_cutoff,
+            100
+        );
+        create_path_oram_correctness_tests_all_parameters!(
+            $oram_type,
+            $prefix,
+            2,
+            1,
+            $bucket_size,
+            $position_block_size,
+            $overflow_size,
+            $recursion_cutoff,
+            1000
+        );
     };
 }
 
-macro_rules! create_correctness_tests_for_oram_type {
-    ($oram_type: ident) => {
-        create_correctness_tests_for_workload_and_oram_type!(linear_workload, $oram_type);
-        create_correctness_tests_for_workload_and_oram_type!(random_workload, $oram_type);
+macro_rules! create_path_oram_correctness_tests {
+    ($bucket_size: expr, $position_block_size: expr, $recursion_cutoff: expr, $overflow_size: expr) => {
+        create_path_oram_correctness_tests_helper!(
+            PathOram,
+            "",
+            $bucket_size,
+            $position_block_size,
+            $recursion_cutoff,
+            $overflow_size
+        );
     };
 }
 
-macro_rules! create_correctness_tests_for_path_oram {
-    ($bucket_size: expr, $position_block_size: expr, $recursion_cutoff: expr, $stash_overflow_size: expr) => {
-        paste::paste! {
-            type [<PathOram $bucket_size _ $position_block_size _ $recursion_cutoff _ $stash_overflow_size>]<V> = PathOram<V, $bucket_size, $position_block_size, $recursion_cutoff, $stash_overflow_size>;
-            create_correctness_tests_for_oram_type!([<PathOram $bucket_size _ $position_block_size _ $recursion_cutoff _ $stash_overflow_size>]);
-        }
+macro_rules! create_path_oram_stash_size_tests {
+    ($bucket_size: expr, $position_block_size: expr, $recursion_cutoff: expr, $overflow_size: expr) => {
+        create_path_oram_correctness_tests_helper!(
+            StashSizeMonitor,
+            "_stash_size_",
+            $bucket_size,
+            $position_block_size,
+            $recursion_cutoff,
+            $overflow_size
+        );
     };
 }
 
 #[derive(Debug)]
-pub(crate) struct StashSizeMonitor<T> {
-    oram: T,
+pub(crate) struct StashSizeMonitor<V: OramBlock, const Z: BucketSize, const AB: BlockSize> {
+    oram: PathOram<V, Z, AB>,
 }
 
-impl<
-        V: OramBlock,
-        const Z: BucketSize,
-        const AB: BlockSize,
-        const RT: RecursionCutoff,
-        const SO: StashSize,
-    > Oram<V> for StashSizeMonitor<PathOram<V, Z, AB, RT, SO>>
-{
-    fn new<R: rand::RngCore + rand::CryptoRng>(
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> StashSizeMonitor<V, Z, AB> {
+    pub(crate) fn new_with_parameters<R: rand::RngCore + rand::CryptoRng>(
         block_capacity: Address,
         rng: &mut R,
+        overflow_size: StashSize,
+        recursion_cutoff: RecursionCutoff,
     ) -> Result<Self, OramError> {
         Ok(Self {
-            oram: PathOram::new(block_capacity, rng)?,
+            oram: PathOram::new_with_parameters(
+                block_capacity,
+                rng,
+                overflow_size,
+                recursion_cutoff,
+            )
+            .unwrap(),
         })
     }
+}
+
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram for StashSizeMonitor<V, Z, AB> {
+    type V = V;
 
     fn block_capacity(&self) -> Result<Address, OramError> {
         self.oram.block_capacity()
@@ -188,23 +258,13 @@ impl<
         rng: &mut R,
     ) -> Result<V, OramError> {
         let result = self.oram.access(index, callback, rng);
-        let stash_size = self.oram.stash.occupancy();
+        let stash_size = self.oram.stash_occupancy();
         assert!(stash_size < 10);
         result
     }
 }
 
-macro_rules! create_stash_size_tests {
-    ($oram_type: ident) => {
-        paste::paste! {
-            type [<MonitorStashSize $oram_type>]<V> = StashSizeMonitor<$oram_type<V>>;
-            create_correctness_tests_for_oram_type!([<MonitorStashSize $oram_type>]);
-        }
-    };
-}
-
-pub(crate) use create_correctness_test;
-pub(crate) use create_correctness_tests_for_oram_type;
-pub(crate) use create_correctness_tests_for_path_oram;
-pub(crate) use create_correctness_tests_for_workload_and_oram_type;
-pub(crate) use create_stash_size_tests;
+pub(crate) use create_path_oram_correctness_tests;
+pub(crate) use create_path_oram_correctness_tests_all_parameters;
+pub(crate) use create_path_oram_correctness_tests_helper;
+pub(crate) use create_path_oram_stash_size_tests;

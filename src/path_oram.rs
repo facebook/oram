@@ -36,22 +36,23 @@ pub const DEFAULT_STASH_OVERFLOW_SIZE: StashSize = 40;
 ///
 /// ## Parameters
 ///
-/// - `V`: the type (block) stored by the ORAM.
-/// - `Z`: The number of blocks per Path ORAM bucket.
-///     Typical values are 3, 4, or 5. Along with SO, this value affects the probability
+/// - Block type `V`: the type of elements stored by the ORAM.
+/// - Bucket size `Z`: the number of blocks per Path ORAM bucket.
+///     Must be at least 2. Typical values are 3, 4, or 5.
+///     Along with the overflow size, this value affects the probability
 ///     of stash overflow (see below) and should be set with care.
-/// - `AB`:
+/// - Positions per block `AB`:
 ///     The number of positions stored in each block of the recursive position map ORAM.
 ///     Must be a power of two and must be at least 2 (otherwise the recursion will not terminate).
 ///     Otherwise, can be freely tuned for performance.
-///     Larger `AB` means fewer levels of recursion, but each level is more expensive.
-///     The default setting of 512 results in approximately 4K blocks (but see Issue #46).
-/// - `RT`: The recursion threshold. If the number of position blocks is at most this value,
-///     the position map will be a linear scanning ORAM; otherwise it will be a recursive Path ORAM.
+///     Larger `AB` means fewer levels of recursion but higher costs for accessing each level.
+/// - Recursion threshold: the maximum number of position blocks that will be stored in a recursive Path ORAM.
+///     Below this value, the position map will be a linear scanning ORAM.
 ///     Can be freely tuned for performance.
-///     Larger `RT` means fewer levels of recursion, but the base position map is more expensive.
-/// - `SO`: The number of blocks that the stash can store between ORAM accesses without overflowing.
-///     This value affects the probability of stash overflow (see below) and should be set with care.
+///     A larger values means fewer levels of recursion, but a more expensive base position map.
+/// - Overflow size: The number of blocks that the stash can store between ORAM accesses without overflowing.
+///     Along with the bucket size, this value affects the probability of stash overflow (see below)
+///     and should be set with care.
 ///
 /// ## Security
 ///
@@ -69,78 +70,94 @@ pub const DEFAULT_STASH_OVERFLOW_SIZE: StashSize = 40;
 /// The authors conservatively estimate that setting SO = 89 suffices for 2^{-80} overflow probability.
 /// The choice Z = 3 is also popular, although the probability of overflow is less well understood.
 #[derive(Debug)]
-pub struct PathOram<
-    V: OramBlock,
-    const Z: BucketSize,
-    const AB: BlockSize,
-    const RT: RecursionCutoff,
-    const SO: StashSize,
-> {
-    // The fields below are not meant to be exposed to clients. They are public for benchmarking and testing purposes.
+pub struct PathOram<V: OramBlock, const Z: BucketSize, const AB: BlockSize> {
     /// The underlying untrusted memory that the ORAM is obliviously accessing on behalf of its client.
-    pub physical_memory: Vec<Bucket<V, Z>>,
+    physical_memory: Vec<Bucket<V, Z>>,
     /// The Path ORAM stash.
-    pub stash: ObliviousStash<V>,
+    stash: ObliviousStash<V>,
     /// The Path ORAM position map.
-    pub position_map: PositionMap<AB, Z, RT, SO>,
+    position_map: PositionMap<AB, Z>,
     /// The height of the Path ORAM tree data structure.
-    pub height: TreeHeight,
+    height: TreeHeight,
 }
 
 /// An `Oram` suitable for most use cases, with reasonable default choices of parameters.
-pub type DefaultOram<V> = PathOram<
-    V,
-    DEFAULT_BLOCKS_PER_BUCKET,
-    DEFAULT_POSITIONS_PER_BLOCK,
-    DEFAULT_RECURSION_CUTOFF,
-    DEFAULT_STASH_OVERFLOW_SIZE,
->;
+pub struct DefaultOram<V: OramBlock>(
+    PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, DEFAULT_POSITIONS_PER_BLOCK>,
+);
 
-impl<
-        V: OramBlock,
-        const Z: BucketSize,
-        const AB: BlockSize,
-        const RT: RecursionCutoff,
-        const SO: StashSize,
-    > Oram<V> for PathOram<V, Z, AB, RT, SO>
-{
-    fn access<R: Rng + CryptoRng, F: Fn(&V) -> V>(
-        &mut self,
-        address: Address,
-        callback: F,
-        rng: &mut R,
-    ) -> Result<V, OramError> {
-        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
-        if address > self.block_capacity()? {
-            return Err(OramError::AddressOutOfBoundsError);
-        }
+impl<V: OramBlock> Oram for DefaultOram<V> {
+    type V = V;
 
-        // Get the position of the target block (with address `address`),
-        // and update that block's position map entry to a fresh random position
-        let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, rng)?;
-        let position = self.position_map.write(address, new_position, rng)?;
-
-        assert!(position.is_leaf(self.height));
-
-        self.stash
-            .read_from_path(&mut self.physical_memory, position)?;
-
-        // Scan the stash for the target block, read its value into `result`,
-        // and overwrite its position (and possibly its value).
-        let result = self.stash.access(address, new_position, callback);
-
-        // Evict blocks from the stash into the path that was just read,
-        // replacing them with dummy blocks.
-        self.stash
-            .write_to_path(&mut self.physical_memory, position)?;
-
-        result
+    fn block_capacity(&self) -> Result<Address, OramError> {
+        self.0.block_capacity()
     }
 
-    fn new<R: Rng + CryptoRng>(block_capacity: Address, rng: &mut R) -> Result<Self, OramError> {
+    fn access<R: rand::RngCore + CryptoRng, F: Fn(&Self::V) -> Self::V>(
+        &mut self,
+        index: Address,
+        callback: F,
+        rng: &mut R,
+    ) -> Result<Self::V, OramError> {
+        self.0.access(index, callback, rng)
+    }
+}
+
+impl<V: OramBlock> DefaultOram<V> {
+    /// Returns a new ORAM mapping addresses `0 <= address < block_capacity` to default `V` values.
+    ///
+    /// # Errors
+    ///
+    /// If `block_capacity` is not a power of two, returns an `InvalidConfigurationError`.
+    pub fn new<R: Rng + CryptoRng>(
+        block_capacity: Address,
+        rng: &mut R,
+    ) -> Result<Self, OramError> {
+        Ok(Self(PathOram::<
+            V,
+            DEFAULT_BLOCKS_PER_BUCKET,
+            DEFAULT_POSITIONS_PER_BLOCK,
+        >::new_with_parameters(
+            block_capacity,
+            rng,
+            DEFAULT_STASH_OVERFLOW_SIZE,
+            DEFAULT_RECURSION_CUTOFF,
+        )?))
+    }
+}
+
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> PathOram<V, Z, AB> {
+    /// Returns a new `PathOram` mapping addresses `0 <= address < block_capacity` to default `V` values,
+    /// with a stash overflow size of `overflow_size` blocks, and a recursion cutoff of `recursion_cutoff`.
+    /// (See [`PathOram`]) for a description of these parameters).
+    ///
+    /// # Errors
+    ///
+    /// Returns an `InvalidConfigurationError` in the following cases.
+    ///
+    /// - `block_capacity` is 0, 1, or is not a power of two.
+    /// - `AB` is 0, 1, or is not a power of two.
+    /// - `Z` is 0 or 1.
+    /// - `recursion_cutoff` is 0.
+    ///
+    /// If `block_capacity` is not a power of two, returns an `InvalidConfigurationError`.
+    pub fn new_with_parameters<R: Rng + CryptoRng>(
+        block_capacity: Address,
+        rng: &mut R,
+        overflow_size: StashSize,
+        recursion_cutoff: RecursionCutoff,
+    ) -> Result<Self, OramError> {
         log::info!("PathOram::new(capacity = {})", block_capacity,);
 
         if !block_capacity.is_power_of_two() | (block_capacity <= 1) {
+            return Err(OramError::InvalidConfigurationError);
+        }
+
+        if Z <= 1 {
+            return Err(OramError::InvalidConfigurationError);
+        }
+
+        if recursion_cutoff == 0 {
             return Err(OramError::InvalidConfigurationError);
         }
 
@@ -149,7 +166,7 @@ impl<
         let height: u64 = (block_capacity.ilog2() - 1).into();
 
         let path_size = u64::try_from(Z)? * (height + 1);
-        let stash = ObliviousStash::new(path_size, SO)?;
+        let stash = ObliviousStash::new(path_size, overflow_size)?;
 
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
@@ -160,7 +177,8 @@ impl<
         // The rest of this function initializes the logical memory to contain default values at every address.
         // This is done by (1) initializing the position map with fresh random leaf identifiers,
         // and (2) writing blocks to the physical memory with the appropriate positions, and default values.
-        let mut position_map = PositionMap::new(block_capacity, rng)?;
+        let mut position_map =
+            PositionMap::new(block_capacity, rng, overflow_size, recursion_cutoff)?;
 
         let slot_indices_to_addresses =
             random_permutation_of_0_through_n_exclusive(block_capacity, rng);
@@ -221,6 +239,49 @@ impl<
         })
     }
 
+    #[cfg(test)]
+    pub(crate) fn stash_occupancy(&self) -> StashSize {
+        self.stash.occupancy()
+    }
+}
+
+impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram for PathOram<V, Z, AB> {
+    type V = V;
+
+    // REVIEW NOTE: This function has not been modified.
+    fn access<R: Rng + CryptoRng, F: Fn(&V) -> V>(
+        &mut self,
+        address: Address,
+        callback: F,
+        rng: &mut R,
+    ) -> Result<V, OramError> {
+        // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
+        if address > self.block_capacity()? {
+            return Err(OramError::AddressOutOfBoundsError);
+        }
+
+        // Get the position of the target block (with address `address`),
+        // and update that block's position map entry to a fresh random position
+        let new_position = CompleteBinaryTreeIndex::random_leaf(self.height, rng)?;
+        let position = self.position_map.write(address, new_position, rng)?;
+
+        assert!(position.is_leaf(self.height));
+
+        self.stash
+            .read_from_path(&mut self.physical_memory, position)?;
+
+        // Scan the stash for the target block, read its value into `result`,
+        // and overwrite its position (and possibly its value).
+        let result = self.stash.access(address, new_position, callback);
+
+        // Evict blocks from the stash into the path that was just read,
+        // replacing them with dummy blocks.
+        self.stash
+            .write_to_path(&mut self.physical_memory, position)?;
+
+        result
+    }
+
     fn block_capacity(&self) -> Result<Address, OramError> {
         Ok(u64::try_from(self.physical_memory.len())?)
     }
@@ -232,28 +293,30 @@ mod tests {
 
     use crate::{bucket::*, test_utils::*};
 
+    use rand::{rngs::StdRng, SeedableRng};
+
     // Test default parameters. For the small capacity used in the tests, this means a linear position map.
-    create_correctness_tests_for_oram_type!(DefaultOram);
+    create_path_oram_correctness_tests!(4, 8, 16384, 40);
 
     // The remaining tests have RECURSION_CUTOFF = 1 in order to test the recursive position map.
 
     // Default parameters, but with RECURSION_CUTOFF = 1.
-    create_correctness_tests_for_path_oram!(4, 8, 1, 40);
+    create_path_oram_correctness_tests!(4, 8, 1, 40);
 
     // Test small initial stash sizes and correct resizing of stash on overflow.
-    create_correctness_tests_for_path_oram!(4, 8, 1, 10);
-    create_correctness_tests_for_path_oram!(4, 8, 1, 0);
+    create_path_oram_correctness_tests!(4, 8, 1, 10);
+    create_path_oram_correctness_tests!(4, 8, 1, 0);
 
     // Test small and large bucket sizes.
-    create_correctness_tests_for_path_oram!(3, 8, 1, 40);
-    create_correctness_tests_for_path_oram!(5, 8, 1, 40);
+    create_path_oram_correctness_tests!(3, 8, 1, 40);
+    create_path_oram_correctness_tests!(5, 8, 1, 40);
 
     // Test small and large position map blocks.
-    create_correctness_tests_for_path_oram!(4, 2, 1, 40);
-    create_correctness_tests_for_path_oram!(4, 64, 1, 40);
+    create_path_oram_correctness_tests!(4, 2, 1, 40);
+    create_path_oram_correctness_tests!(4, 64, 1, 40);
 
     // "Running sanity checks" for the default parameters.
 
     // Check that the stash size stays reasonably small over the test runs.
-    create_stash_size_tests!(DefaultOram);
+    create_path_oram_stash_size_tests!(4, 8, 16384, 40);
 }
