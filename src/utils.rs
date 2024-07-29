@@ -25,19 +25,18 @@ pub(crate) trait CompleteBinaryTreeIndex
 where
     Self: Sized,
 {
-    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self;
+    fn ct_node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self;
     fn random_leaf<R: RngCore + CryptoRng>(
         tree_height: TreeHeight,
         rng: &mut R,
     ) -> Result<Self, TryFromIntError>;
     fn ct_depth(&self) -> TreeHeight;
     fn is_leaf(&self, height: TreeHeight) -> bool;
-    fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self;
 }
 
 impl CompleteBinaryTreeIndex for TreeIndex {
     // A TreeIndex can have any nonzero value.
-    fn node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self {
+    fn ct_node_on_path(&self, depth: TreeHeight, height: TreeHeight) -> Self {
         // We maintain the invariant that all TreeIndex values are nonzero.
         assert_ne!(*self, 0);
         // We only call this method when the receiver is a leaf.
@@ -72,19 +71,6 @@ impl CompleteBinaryTreeIndex for TreeIndex {
         assert_ne!(*self, 0);
 
         self.ct_depth() == height
-    }
-
-    fn ct_common_ancestor_of_two_leaves(&self, other: Self) -> Self {
-        // We only call this function on pairs of Path ORAM leaves, which have the same depth.
-        assert!(self.ct_depth() == other.ct_depth());
-
-        let shared_prefix_length = (self ^ other).leading_zeros();
-        let common_ancestor = self >> (Self::BITS - shared_prefix_length);
-
-        // Since the input leaves are nonzero, the output must also be nonzero.
-        assert_ne!(common_ancestor, 0);
-
-        common_ancestor
     }
 }
 
