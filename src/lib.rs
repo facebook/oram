@@ -5,39 +5,47 @@
 // License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 // of this source tree. You may select, at your option, one of the above-listed licenses.
 
-//! An implementation of Oblivious RAM (ORAM).
+//! An implementation of Oblivious RAM (ORAM) for the secure enclave setting.
 //!
 //! # Overview
 //!
-//! Oblivious RAM is a protocol between a client and a data store (store).
-//! The client makes a sequence of requests `read(index)` and `write(index, data)`
-//! as if interacting with a random access memory (RAM).
-//! The protocol fulfills these requests by interacting with the store.
-//! It guarantees *obliviousness*, which says that the (randomized) view of the store
-//! depends only on the length of the request sequence made by the client.
-//! In particular, it is statistically independent of the specific operations performed.
-//! ORAM is typically used to hide private or secret-dependent data accesses; for example,
-//! those made by a secure enclave to local RAM, or those made by an oblivious
-//! remote filesystem client to the remote file server.
-//! This crate implements an oblivious RAM protocol called Path ORAM.
+//! This crate implements an oblivious RAM protocol (ORAM) for (secure) enclave applications.
+//!
+//! This crate assumes that ORAM clients are running inside a secure enclave architecture that provides memory encryption.
+//! It does not perform encryption-on-write and thus is **not** secure without memory encryption.
+//!
+//! # Design
+//!
+//! This crate implements the Path ORAM protocol, with oblivious
+//! client data structures based on the [Oblix paper](https://people.eecs.berkeley.edu/~raluca/oblix.pdf).
 //! See the [Path ORAM retrospective paper](http://elaineshi.com/docs/pathoram-retro.pdf)
 //! for a high-level introduction to ORAM and Path ORAM, and for more detailed references.
 //!
 //! # Example
 //!
-//! The following example initializes an ORAM whose store is just local memory,
-//! and makes a few requests against it.
+//! The below example reads a database from memory into an ORAM to permit secret-dependent access to it.
 //!
 //! ```
-//! use rand::rngs::OsRng;
-//! use oram::{Oram, DefaultOram};
+//! use oram::{Address, BlockSize, BlockValue, Oram, DefaultOram};
 //! # use oram::OramError;
 //!
-//! let capacity = 64;
-//! let mut rng = OsRng;
-//! let mut oram = DefaultOram::<u8>::new(capacity, &mut rng)?;
-//! oram.write(1, 42u8, &mut rng)?;
-//! assert_eq!(oram.read(1, &mut rng)?, 42u8);
+//! const BLOCK_SIZE: BlockSize = 64;
+//! const DB_SIZE: Address = 64;
+//! # const DATABASE: [[u8; BLOCK_SIZE as usize]; DB_SIZE as usize] =
+//! # [[0; BLOCK_SIZE as usize]; DB_SIZE as usize];
+//! let mut rng = rand::rngs::OsRng;
+//!
+//! // Initialize `oram` to store 64 blocks of 64 bytes each.
+//! let mut oram = DefaultOram::<BlockValue<BLOCK_SIZE>>::new(DB_SIZE, &mut rng)?;
+//!
+//! // Read DATABASE into oram.
+//! for (i, bytes) in DATABASE.iter().enumerate() {
+//!     oram.write(i as Address, BlockValue::new(*bytes), &mut rng)?;
+//! }
+//!
+//! // Now you can safely make secret-dependent accesses to your database.
+//! let secret = 42;
+//! let _ = oram.read(secret, &mut rng)?;
 //! # Ok::<(), OramError>(())
 //! ```
 
@@ -49,9 +57,9 @@ use rand::{CryptoRng, RngCore};
 use subtle::ConditionallySelectable;
 use thiserror::Error;
 
-pub mod bucket;
-pub mod database;
-pub mod linear_time_oram;
+pub(crate) mod bucket;
+pub(crate) mod database;
+pub(crate) mod linear_time_oram;
 pub mod path_oram;
 pub(crate) mod position_map;
 pub(crate) mod stash;
@@ -59,6 +67,7 @@ pub(crate) mod stash;
 mod test_utils;
 pub(crate) mod utils;
 
+pub use crate::bucket::BlockValue;
 pub use crate::path_oram::DefaultOram;
 pub use crate::path_oram::PathOram;
 
@@ -78,6 +87,11 @@ pub trait OramBlock:
 impl OramBlock for u8 {}
 impl OramBlock for u16 {}
 impl OramBlock for u32 {}
+impl OramBlock for u64 {}
+impl OramBlock for i8 {}
+impl OramBlock for i16 {}
+impl OramBlock for i32 {}
+impl OramBlock for i64 {}
 
 /// A list of error types which are produced during ORAM protocol execution.
 #[derive(Error, Debug)]

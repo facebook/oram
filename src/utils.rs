@@ -7,7 +7,7 @@
 
 //! Utilities.
 
-use crate::{OramBlock, OramError};
+use crate::OramError;
 use rand::seq::SliceRandom;
 use rand::{CryptoRng, Rng, RngCore};
 
@@ -18,8 +18,6 @@ use std::{mem::size_of, num::TryFromIntError};
 
 pub(crate) type TreeIndex = u64;
 pub(crate) type TreeHeight = u64;
-
-impl OramBlock for TreeIndex {}
 
 const_assert_eq!(size_of::<TreeIndex>(), 8);
 

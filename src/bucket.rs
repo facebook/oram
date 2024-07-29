@@ -20,7 +20,6 @@ use crate::BucketSize;
 use crate::{utils::TreeIndex, Address};
 use subtle::ConstantTimeEq;
 
-// REVIEW NOTE: the rest of this module is not new code. It was moved from lib.rs and path_oram/mod.rs.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(align(64))]
 /// An `OramBlock` consisting of unstructured bytes.

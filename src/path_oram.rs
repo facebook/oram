@@ -200,7 +200,6 @@ pub type ConcreteObliviousBlockOram<const B: BlockSize, V> =
 pub type ConcreteObliviousAddressOram<const AB: BlockSize, V> =
     PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, AB, DEFAULT_RECURSION_THRESHOLD>;
 
-// REVIEW NOTE: the below test modules are not new code.
 #[cfg(test)]
 mod block_oram_tests {
     use bucket::BlockValue;
