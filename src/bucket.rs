@@ -21,7 +21,6 @@ use crate::{utils::TreeIndex, Address};
 use subtle::ConstantTimeEq;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[repr(align(64))]
 /// An `OramBlock` consisting of unstructured bytes.
 pub struct BlockValue<const B: BlockSize>([u8; B]);
 
@@ -155,7 +154,6 @@ impl<const B: BlockSize> Distribution<PositionBlock<B>> for Standard {
 
 impl<const B: BlockSize> OramBlock for PositionBlock<B> {}
 
-#[repr(align(4096))]
 #[derive(Clone, Copy, PartialEq)]
 /// A Path ORAM bucket.
 pub struct Bucket<V: OramBlock, const Z: BucketSize> {
