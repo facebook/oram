@@ -10,7 +10,6 @@
 use super::{position_map::PositionMap, stash::ObliviousStash};
 use crate::{
     bucket::{Bucket, PathOramBlock, PositionBlock},
-    database::{CountAccessesDatabase, Database},
     utils::{
         invert_permutation_oblivious, random_permutation_of_0_through_n_exclusive, to_usize_vec,
         CompleteBinaryTreeIndex, TreeHeight,
@@ -80,7 +79,7 @@ pub struct PathOram<
 > {
     // The fields below are not meant to be exposed to clients. They are public for benchmarking and testing purposes.
     /// The underlying untrusted memory that the ORAM is obliviously accessing on behalf of its client.
-    pub physical_memory: CountAccessesDatabase<Bucket<V, Z>>,
+    pub physical_memory: Vec<Bucket<V, Z>>,
     /// The Path ORAM stash.
     pub stash: ObliviousStash<V>,
     /// The Path ORAM position map.
@@ -161,8 +160,8 @@ impl<
         // physical_memory holds `block_capacity` buckets, each storing up to Z blocks.
         // The number of leaves is `block_capacity` / 2, which the original Path ORAM paper's experiments
         // found was sufficient to keep the stash size small with high probability.
-        let mut physical_memory: CountAccessesDatabase<Bucket<V, Z>> =
-            Database::new(number_of_nodes)?;
+        let mut physical_memory = Vec::new();
+        physical_memory.resize(usize::try_from(number_of_nodes)?, Bucket::<V, Z>::default());
 
         // The rest of this function initializes the logical memory to contain default values at every address.
         // This is done by (1) initializing the position map with fresh random leaf identifiers,
@@ -180,7 +179,12 @@ impl<
 
         // Iterate over leaves, writing 2 blocks into each leaf bucket with random(ly permuted) addresses and default values.
         let addresses_per_leaf = 2;
-        for leaf_index in first_leaf_index..=last_leaf_index {
+        for (leaf_index, tree_bucket) in physical_memory
+            .iter_mut()
+            .enumerate()
+            .take(last_leaf_index + 1)
+            .skip(first_leaf_index)
+        {
             let mut bucket_to_write = Bucket::<V, Z>::default();
             for slot_index in 0..addresses_per_leaf {
                 let address_index = (leaf_index - first_leaf_index) * 2 + slot_index;
@@ -192,7 +196,7 @@ impl<
             }
 
             // Write the leaf bucket back to physical memory.
-            physical_memory.write_db(leaf_index.try_into()?, bucket_to_write)?;
+            *tree_bucket = bucket_to_write;
         }
 
         // The address block size might not divide the block capacity.
@@ -224,18 +228,15 @@ impl<
     }
 
     fn block_capacity(&self) -> Result<Address, OramError> {
-        self.physical_memory.capacity()
+        Ok(u64::try_from(self.physical_memory.len())?)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use bucket::BlockValue;
-
     use super::*;
 
-    use crate::test_utils::*;
-    use crate::*;
+    use crate::{bucket::*, test_utils::*};
 
     // Test default parameters. For the small capacity used in the tests, this means a linear position map.
     create_correctness_tests_for_oram_type!(DefaultOram);

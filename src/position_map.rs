@@ -11,8 +11,8 @@ use super::path_oram::PathOram;
 use crate::bucket::PositionBlock;
 use crate::StashSize;
 use crate::{
-    database::SimpleDatabase, linear_time_oram::LinearTimeOram, utils::TreeIndex, Address,
-    BlockSize, BucketSize, Oram, OramBlock,
+    linear_time_oram::LinearTimeOram, utils::TreeIndex, Address, BlockSize, BucketSize, Oram,
+    OramBlock,
 };
 use crate::{OramError, RecursionCutoff};
 use log::debug;
@@ -41,7 +41,7 @@ pub enum PositionMap<
     const SO: StashSize,
 > {
     /// A simple, linear-time `AddressOram`.
-    Base(LinearTimeOram<SimpleDatabase<PositionBlock<AB>>>),
+    Base(LinearTimeOram<PositionBlock<AB>>),
     /// A recursive `AddressOram` whose position map is also an `AddressOram`.
     Recursive(Box<PathOram<PositionBlock<AB>, Z, AB, RT, SO>>),
 }

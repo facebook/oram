@@ -13,7 +13,6 @@
 extern crate criterion;
 use core::fmt;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use std::fmt::Display;
 use std::time::Duration;
 
 use oram::BlockSize;
@@ -25,24 +24,14 @@ const CAPACITIES_TO_BENCHMARK: [Address; 3] = [1 << 14, 1 << 16, 1 << 20];
 const NUM_RANDOM_OPERATIONS_TO_RUN: u64 = 64;
 
 trait Instrumented {
-    fn get_read_count(&self) -> u64;
-    fn get_write_count(&self) -> u64;
     fn short_name() -> String;
 }
 
-type BenchmarkRecursiveSecurePathOram<const B: BlockSize> = DefaultOram<BlockValue<B>>;
+type DefaultOramForBenchmarks<const B: BlockSize> = DefaultOram<BlockValue<B>>;
 
-impl<const B: BlockSize> Instrumented for BenchmarkRecursiveSecurePathOram<B> {
-    fn get_read_count(&self) -> u64 {
-        self.physical_memory.get_read_count()
-    }
-
-    fn get_write_count(&self) -> u64 {
-        self.physical_memory.get_write_count()
-    }
-
+impl<const B: BlockSize> Instrumented for DefaultOramForBenchmarks<B> {
     fn short_name() -> String {
-        "RecursiveSecureOram".into()
+        "DefaultOram".into()
     }
 }
 
@@ -51,11 +40,10 @@ criterion_group!(
     name = benches;
     config = Criterion::default().warm_up_time(Duration::new(0, 1_000_000_00)).measurement_time(Duration::new(0, 1_000_000_00)).sample_size(10);
     targets =
-    benchmark_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-    benchmark_initialization::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-    print_read_header::<BenchmarkRecursiveSecurePathOram<0>>,
-    count_accesses_on_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
+    benchmark_read::<4096, DefaultOramForBenchmarks<4096>>,
+    benchmark_initialization::<4096, DefaultOramForBenchmarks<4096>>,
 );
+
 // More comprehensive, slower benchmarks. TODO (#31) this organization should be more formal.
 // criterion_group!(
 //     name = benches;
@@ -69,87 +57,8 @@ criterion_group!(
 //     benchmark_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
 //     benchmark_random_operations::<64, BenchmarkRecursiveSecurePathOram<64>>,
 //     benchmark_random_operations::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-//     print_read_header::<BenchmarkRecursiveSecurePathOram<0>>,
-//     count_accesses_on_read::<64, BenchmarkRecursiveSecurePathOram<64>>,
-//     count_accesses_on_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-//     print_write_header::<BenchmarkRecursiveSecurePathOram<0>>,
-//     count_accesses_on_write::<64, BenchmarkRecursiveSecurePathOram<64>>,
-//     count_accesses_on_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-//     print_random_operations_header::<BenchmarkRecursiveSecurePathOram<0>>,
-//     count_accesses_on_random_workload::<64, BenchmarkRecursiveSecurePathOram<64>>,
-//     count_accesses_on_random_workload::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
 // );
 criterion_main!(benches);
-
-fn count_accesses_on_operation<
-    const B: BlockSize,
-    T: Oram<BlockValue<B>> + Instrumented,
-    F: Fn(&mut T, &mut StdRng, Address) -> (),
->(
-    operation: F,
-) {
-    let mut rng = StdRng::seed_from_u64(0);
-    for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity, &mut rng).unwrap();
-
-        let read_count_before = oram.get_read_count();
-        let write_count_before = oram.get_write_count();
-
-        operation(&mut oram, &mut rng, capacity);
-
-        let read_count_after = oram.get_read_count();
-        let write_count_after = oram.get_write_count();
-
-        let reads_due_to_operation = read_count_after - read_count_before;
-        let writes_due_to_operation = write_count_after - write_count_before;
-
-        print_table_row(capacity, B, reads_due_to_operation, writes_due_to_operation);
-    }
-}
-
-fn count_accesses_on_read<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
-    _: &mut Criterion,
-) {
-    count_accesses_on_operation(|oram: &mut T, rng, _capacity| {
-        oram.read(0, rng).unwrap();
-    });
-}
-
-fn count_accesses_on_write<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
-    _: &mut Criterion,
-) {
-    count_accesses_on_operation(|oram: &mut T, rng: &mut StdRng, _capacity| {
-        oram.write(0, BlockValue::default(), rng).unwrap();
-    });
-}
-
-fn count_accesses_on_random_workload<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
-    _: &mut Criterion,
-) {
-    count_accesses_on_operation(|oram: &mut T, rng, capacity| {
-        let number_of_operations_to_run = 64usize;
-
-        let mut read_versus_write_randomness = vec![false; number_of_operations_to_run];
-        rng.fill(&mut read_versus_write_randomness[..]);
-
-        let capacity_usize: usize = capacity.try_into().unwrap();
-        let mut value_randomness = vec![0u8; 4096 * capacity_usize];
-        rng.fill(&mut value_randomness[..]);
-
-        let mut index_randomness = vec![0u64; number_of_operations_to_run];
-        for i in 0..number_of_operations_to_run {
-            index_randomness[i] = rng.gen_range(0..capacity);
-        }
-
-        run_many_random_accesses::<B, T>(
-            oram,
-            number_of_operations_to_run,
-            black_box(&index_randomness),
-            black_box(&read_versus_write_randomness),
-            black_box(&value_randomness),
-        );
-    });
-}
 
 fn benchmark_initialization<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
     c: &mut Criterion,
@@ -307,41 +216,4 @@ impl fmt::Display for RandomOperationsParameters {
             self.capacity, self.block_size, self.number_of_operations_to_run,
         )
     }
-}
-
-fn print_table_row<A: Display, B: Display, C: Display, D: Display>(s1: A, s2: B, s3: C, s4: D) {
-    println!("{0: <15} | {1: <15} | {2: <15} | {3: <15}", s1, s2, s3, s4)
-}
-
-fn print_read_header<T: Instrumented>(_: &mut Criterion) {
-    println!("Physical reads and writes incurred by 1 {}::read:", {
-        T::short_name()
-    });
-    print_table_header::<T>();
-}
-
-fn print_write_header<T: Instrumented>(_: &mut Criterion) {
-    println!();
-    println!("Physical reads and writes incurred by 1 {}::write:", {
-        T::short_name()
-    });
-    print_table_header::<T>();
-}
-
-fn print_random_operations_header<T: Instrumented>(_: &mut Criterion) {
-    println!();
-    println!(
-        "Physical reads and writes incurred by {} random {} operations:",
-        NUM_RANDOM_OPERATIONS_TO_RUN,
-        T::short_name()
-    );
-    print_table_header::<T>();
-}
-fn print_table_header<T: Instrumented>() {
-    print_table_row(
-        "ORAM Capacity",
-        "ORAM Blocksize",
-        "Physical Reads",
-        "Physical Writes",
-    );
 }

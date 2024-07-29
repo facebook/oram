@@ -98,8 +98,7 @@ use subtle::ConditionallySelectable;
 use thiserror::Error;
 
 pub(crate) mod bucket;
-pub(crate) mod database;
-pub(crate) mod linear_time_oram;
+pub mod linear_time_oram;
 pub mod path_oram;
 pub(crate) mod position_map;
 pub(crate) mod stash;
