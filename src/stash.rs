@@ -16,6 +16,8 @@ use crate::{
 
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
+const STASH_GROWTH_INCREMENT: usize = 10;
+
 #[derive(Debug)]
 /// A fixed-size, obliviously accessed Path ORAM stash data structure implemented using oblivious sorting.
 pub struct ObliviousStash<V: OramBlock> {
@@ -80,6 +82,7 @@ impl<V: OramBlock> ObliviousStash<V> {
 
         // Assign dummy blocks to the remaining non-full buckets until all buckets are full.
         let mut exists_unfilled_levels: Choice = 1.into();
+        let mut first_unassigned_block_index: usize = 0;
         // Unless the stash overflows, this loop will execute exactly once, and the inner `if` will not execute.
         // If the stash overflows, this loop will execute twice and the inner `if` will execute.
         // This difference in control flow will leak the fact that the stash has overflowed.
@@ -87,7 +90,12 @@ impl<V: OramBlock> ObliviousStash<V> {
         // If the stash is set large enough when the ORAM is initialized,
         // stash overflow will occur only with negligible probability.
         while exists_unfilled_levels.into() {
-            for (i, block) in self.blocks.iter().enumerate() {
+            for (i, block) in self
+                .blocks
+                .iter()
+                .enumerate()
+                .skip(first_unassigned_block_index)
+            {
                 let block_free = block.ct_is_dummy();
 
                 let mut assigned: Choice = 0.into();
@@ -108,9 +116,16 @@ impl<V: OramBlock> ObliviousStash<V> {
             }
 
             if exists_unfilled_levels.into() {
-                self.blocks
-                    .resize(2 * self.blocks.len(), PathOramBlock::<V>::dummy());
-                level_assignments.resize(2 * level_assignments.len(), TreeIndex::MAX);
+                first_unassigned_block_index = self.blocks.len();
+
+                self.blocks.resize(
+                    self.blocks.len() + STASH_GROWTH_INCREMENT,
+                    PathOramBlock::<V>::dummy(),
+                );
+                level_assignments.resize(
+                    level_assignments.len() + STASH_GROWTH_INCREMENT,
+                    TreeIndex::MAX,
+                );
             }
         }
 
