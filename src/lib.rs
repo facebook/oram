@@ -142,11 +142,21 @@ pub enum OramError {
     #[error("Arithmetic error encountered.")]
     IntegerConversionError(#[from] TryFromIntError),
     /// Errors arising from attempting to make an ORAM access to an invalid address.
-    #[error("Attempted to access an out-of-bounds ORAM address.")]
-    AddressOutOfBoundsError,
+    #[error("Attempted to access ORAM address {attempted}, which is larger than ORAM capacity {capacity}.")]
+    AddressOutOfBoundsError {
+        /// The invalid address that was accessed.
+        attempted: Address,
+        /// The capacity of the ORAM that was accessed.
+        capacity: Address,
+    },
     /// Errors arising from invalid parameters or configuration.
-    #[error("Invalid configuration.")]
-    InvalidConfigurationError,
+    #[error("Invalid configuration. {parameter_name} cannot have value {parameter_value}.")]
+    InvalidConfigurationError {
+        /// The misconfigured parameter.
+        parameter_name: String,
+        /// Its invalid value.
+        parameter_value: String,
+    },
 }
 
 /// Represents an oblivious RAM (ORAM) mapping addresses of type `Address` to values of type `V: OramBlock`.
