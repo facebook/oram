@@ -86,7 +86,20 @@ pub struct PathOram<V: OramBlock, const Z: BucketSize, const AB: BlockSize> {
 
 /// An `Oram` suitable for most use cases, with reasonable default choices of parameters.
 #[derive(Debug)]
+<<<<<<< HEAD
 pub struct DefaultOram<V: OramBlock>(DefaultOramBackend<V>);
+
+#[derive(Debug)]
+enum DefaultOramBackend<V: OramBlock> {
+    Path(PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, DEFAULT_POSITIONS_PER_BLOCK>),
+    Linear(LinearTimeOram<V>),
+}
+=======
+pub struct DefaultOram<V: OramBlock>(
+    // PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, DEFAULT_POSITIONS_PER_BLOCK>,
+    DefaultOramBackend<V>,
+);
+>>>>>>> e05970d (Small ORAM defaults to linear.)
 
 #[derive(Debug)]
 enum DefaultOramBackend<V: OramBlock> {
