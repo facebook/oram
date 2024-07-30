@@ -43,7 +43,10 @@ impl<V: OramBlock> Oram for LinearTimeOram<V> {
 
         // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
         if !index_in_bounds {
-            return Err(OramError::AddressOutOfBoundsError);
+            return Err(OramError::AddressOutOfBoundsError {
+                attempted: index,
+                capacity: self.block_capacity()?,
+            });
         }
 
         // This is a dummy value which will always be overwritten.

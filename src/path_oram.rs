@@ -86,20 +86,7 @@ pub struct PathOram<V: OramBlock, const Z: BucketSize, const AB: BlockSize> {
 
 /// An `Oram` suitable for most use cases, with reasonable default choices of parameters.
 #[derive(Debug)]
-<<<<<<< HEAD
 pub struct DefaultOram<V: OramBlock>(DefaultOramBackend<V>);
-
-#[derive(Debug)]
-enum DefaultOramBackend<V: OramBlock> {
-    Path(PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, DEFAULT_POSITIONS_PER_BLOCK>),
-    Linear(LinearTimeOram<V>),
-}
-=======
-pub struct DefaultOram<V: OramBlock>(
-    // PathOram<V, DEFAULT_BLOCKS_PER_BUCKET, DEFAULT_POSITIONS_PER_BLOCK>,
-    DefaultOramBackend<V>,
-);
->>>>>>> e05970d (Small ORAM defaults to linear.)
 
 #[derive(Debug)]
 enum DefaultOramBackend<V: OramBlock> {
@@ -183,15 +170,24 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> PathOram<V, Z, AB> 
         log::info!("PathOram::new(capacity = {})", block_capacity,);
 
         if !block_capacity.is_power_of_two() | (block_capacity <= 1) {
-            return Err(OramError::InvalidConfigurationError);
+            return Err(OramError::InvalidConfigurationError {
+                parameter_name: "ORAM capacity".to_string(),
+                parameter_value: block_capacity.to_string(),
+            });
         }
 
         if Z <= 1 {
-            return Err(OramError::InvalidConfigurationError);
+            return Err(OramError::InvalidConfigurationError {
+                parameter_name: "Bucket size Z".to_string(),
+                parameter_value: Z.to_string(),
+            });
         }
 
         if recursion_cutoff == 0 {
-            return Err(OramError::InvalidConfigurationError);
+            return Err(OramError::InvalidConfigurationError {
+                parameter_name: "Recursion cutoff".to_string(),
+                parameter_value: recursion_cutoff.to_string(),
+            });
         }
 
         let number_of_nodes = block_capacity;
@@ -290,7 +286,10 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram for PathOram<V
     ) -> Result<V, OramError> {
         // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
         if address > self.block_capacity()? {
-            return Err(OramError::AddressOutOfBoundsError);
+            return Err(OramError::AddressOutOfBoundsError {
+                attempted: address,
+                capacity: self.block_capacity()?,
+            });
         }
 
         // Get the position of the target block (with address `address`),

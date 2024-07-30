@@ -74,7 +74,10 @@ impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
         );
 
         if (AB < 2) | (!AB.is_power_of_two()) {
-            return Err(OramError::InvalidConfigurationError);
+            return Err(OramError::InvalidConfigurationError {
+                parameter_name: "Position block size AB".to_string(),
+                parameter_value: AB.to_string(),
+            });
         }
 
         let ab_address: Address = AB.try_into()?;
