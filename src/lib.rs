@@ -81,9 +81,7 @@
 //!     BlockValue<BLOCK_SIZE>,
 //!     BUCKET_SIZE,
 //!     POSITIONS_PER_BLOCK,
-//!     RECURSION_CUTOFF,
-//!     INITIAL_STASH_OVERFLOW_SIZE
-//!     >::new(DB_SIZE, &mut rng)?;
+//!     >::new_with_parameters(DB_SIZE, &mut rng, INITIAL_STASH_OVERFLOW_SIZE, RECURSION_CUTOFF)?;
 //! # Ok::<(), OramError>(())
 //! ```
 //!
@@ -152,17 +150,12 @@ pub enum OramError {
 }
 
 /// Represents an oblivious RAM (ORAM) mapping addresses of type `Address` to values of type `V: OramBlock`.
-pub trait Oram<V: OramBlock>
+pub trait Oram
 where
     Self: Sized,
 {
-    /// Returns a new ORAM mapping addresses `0 <= address < block_capacity` to default `V` values.
-    ///
-    /// # Errors
-    ///
-    /// If `block_capacity` is not a power of two, returns an `InvalidConfigurationError`.
-    fn new<R: RngCore + CryptoRng>(block_capacity: Address, rng: &mut R)
-        -> Result<Self, OramError>;
+    /// The type of elements stored in the ORAM.
+    type V: OramBlock;
 
     /// Returns the capacity in blocks of this ORAM.
     fn block_capacity(&self) -> Result<Address, OramError>;
@@ -172,20 +165,20 @@ where
     ///
     /// For updating a block in place, using `access` is expected to be about
     /// twice as fast as performing a `read` followed by a `write`.
-    fn access<R: RngCore + CryptoRng, F: Fn(&V) -> V>(
+    fn access<R: RngCore + CryptoRng, F: Fn(&Self::V) -> Self::V>(
         &mut self,
         index: Address,
         callback: F,
         rng: &mut R,
-    ) -> Result<V, OramError>;
+    ) -> Result<Self::V, OramError>;
 
     /// Obliviously reads the value stored at `index`.
     fn read<R: RngCore + CryptoRng>(
         &mut self,
         index: Address,
         rng: &mut R,
-    ) -> Result<V, OramError> {
-        let callback = |x: &V| *x;
+    ) -> Result<Self::V, OramError> {
+        let callback = |x: &Self::V| *x;
         self.access(index, callback, rng)
     }
 
@@ -193,10 +186,10 @@ where
     fn write<R: RngCore + CryptoRng>(
         &mut self,
         index: Address,
-        new_value: V,
+        new_value: Self::V,
         rng: &mut R,
-    ) -> Result<V, OramError> {
-        let callback = |_: &V| new_value;
+    ) -> Result<Self::V, OramError> {
+        let callback = |_: &Self::V| new_value;
         self.access(index, callback, rng)
     }
 }

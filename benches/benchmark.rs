@@ -7,31 +7,34 @@
 
 //! This module contains benchmarks for the `oram` crate.
 
-// This allows me to work with a small, fast set of benchmarks (see #31).
-#![allow(dead_code)]
-
 extern crate criterion;
 use core::fmt;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use oram::DefaultOram;
+use rand::CryptoRng;
+use rand::RngCore;
+use std::mem;
 use std::time::Duration;
 
 use oram::BlockSize;
 use oram::BlockValue;
-use oram::{Address, DefaultOram, Oram};
+use oram::{Address, Oram};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 const CAPACITIES_TO_BENCHMARK: [Address; 3] = [1 << 14, 1 << 16, 1 << 20];
-const NUM_RANDOM_OPERATIONS_TO_RUN: u64 = 64;
 
-trait Instrumented {
+trait Benchmarkable {
     fn short_name() -> String;
+    fn new<R: CryptoRng + RngCore>(capacity: Address, rng: &mut R) -> Self;
 }
 
-type DefaultOramForBenchmarks<const B: BlockSize> = DefaultOram<BlockValue<B>>;
-
-impl<const B: BlockSize> Instrumented for DefaultOramForBenchmarks<B> {
+impl<const B: BlockSize> Benchmarkable for DefaultOram<BlockValue<B>> {
     fn short_name() -> String {
         "DefaultOram".into()
+    }
+
+    fn new<R: CryptoRng + RngCore>(capacity: Address, rng: &mut R) -> Self {
+        Self::new(capacity, rng).unwrap()
     }
 }
 
@@ -40,36 +43,26 @@ criterion_group!(
     name = benches;
     config = Criterion::default().warm_up_time(Duration::new(0, 1_000_000_00)).measurement_time(Duration::new(0, 1_000_000_00)).sample_size(10);
     targets =
-    benchmark_read::<4096, DefaultOramForBenchmarks<4096>>,
-    benchmark_initialization::<4096, DefaultOramForBenchmarks<4096>>,
+    benchmark_read::<DefaultOram<BlockValue<4096>>>,
+    benchmark_write::<DefaultOram<BlockValue<4096>>>,
+    benchmark_initialization::<DefaultOram<BlockValue<4096>>>,
+    benchmark_random_operations::<4096, DefaultOram<BlockValue<4096>>>,
+    benchmark_read::<DefaultOram<BlockValue<64>>>,
+    benchmark_write::<DefaultOram<BlockValue<64>>>,
+    benchmark_initialization::<DefaultOram<BlockValue<64>>>,
+    benchmark_random_operations::<64, DefaultOram<BlockValue<64>>>,
 );
 
-// More comprehensive, slower benchmarks. TODO (#31) this organization should be more formal.
-// criterion_group!(
-//     name = benches;
-//     config = Criterion::default().warm_up_time(Duration::new(0, 1_000_000_00)).measurement_time(Duration::new(0, 1_000_000_00)).sample_size(10);
-//     targets =
-//     benchmark_initialization::<64, BenchmarkRecursiveSecurePathOram<64>>,
-//     benchmark_initialization::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-//     benchmark_read::<64, BenchmarkRecursiveSecurePathOram<64>>,
-//     benchmark_read::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-//     benchmark_write::<64, BenchmarkRecursiveSecurePathOram<64>>,
-//     benchmark_write::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-//     benchmark_random_operations::<64, BenchmarkRecursiveSecurePathOram<64>>,
-//     benchmark_random_operations::<4096, BenchmarkRecursiveSecurePathOram<4096>>,
-// );
 criterion_main!(benches);
 
-fn benchmark_initialization<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
-    c: &mut Criterion,
-) {
+fn benchmark_initialization<T: Oram + Benchmarkable>(c: &mut Criterion) {
     let mut group = c.benchmark_group(T::short_name() + "::initialization");
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
         group.bench_with_input(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
-                block_size: B,
+                block_size: mem::size_of::<T::V>(),
             }),
             capacity,
             |b, capacity| b.iter(|| T::new(*capacity, &mut rng)),
@@ -77,44 +70,44 @@ fn benchmark_initialization<const B: usize, T: Oram<BlockValue<B>> + Instrumente
     }
 }
 
-fn benchmark_read<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(c: &mut Criterion) {
+fn benchmark_read<T: Oram + Benchmarkable>(c: &mut Criterion) {
     let mut group = c.benchmark_group(T::short_name() + "::read");
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram = T::new(*capacity, &mut rng).unwrap();
+        let mut oram = T::new(*capacity, &mut rng);
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
-                block_size: B,
+                block_size: mem::size_of::<T::V>(),
             }),
             |b| b.iter(|| oram.read(0, &mut rng)),
         );
     }
 }
 
-fn benchmark_write<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(c: &mut Criterion) {
+fn benchmark_write<T: Oram + Benchmarkable>(c: &mut Criterion) {
     let mut group = c.benchmark_group(T::short_name() + "::write");
     let mut rng = StdRng::seed_from_u64(0);
     for capacity in CAPACITIES_TO_BENCHMARK.iter() {
-        let mut oram = T::new(*capacity, &mut rng).unwrap();
+        let mut oram = T::new(*capacity, &mut rng);
         group.bench_function(
             BenchmarkId::from_parameter(ReadWriteParameters {
                 capacity: *capacity,
-                block_size: B,
+                block_size: mem::size_of::<T::V>(),
             }),
-            |b| b.iter(|| oram.write(0, BlockValue::default(), &mut rng)),
+            |b| b.iter(|| oram.write(0, T::V::default(), &mut rng)),
         );
     }
 }
 
-fn benchmark_random_operations<const B: usize, T: Oram<BlockValue<B>> + Instrumented>(
+fn benchmark_random_operations<const B: BlockSize, T: Oram<V = BlockValue<B>> + Benchmarkable>(
     c: &mut Criterion,
 ) {
     let mut group = c.benchmark_group(T::short_name() + "::random_operations");
     let mut rng = StdRng::seed_from_u64(0);
 
     for capacity in CAPACITIES_TO_BENCHMARK {
-        let mut oram = T::new(capacity, &mut rng).unwrap();
+        let mut oram = T::new(capacity, &mut rng);
 
         let number_of_operations_to_run = 64 as usize;
 
@@ -156,7 +149,7 @@ fn benchmark_random_operations<const B: usize, T: Oram<BlockValue<B>> + Instrume
     group.finish();
 }
 
-fn run_many_random_accesses<const B: usize, T: Oram<BlockValue<B>>>(
+fn run_many_random_accesses<const B: BlockSize, T: Oram<V = BlockValue<B>>>(
     oram: &mut T,
     number_of_operations_to_run: usize,
     index_randomness: &[Address],

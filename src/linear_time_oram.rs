@@ -19,14 +19,19 @@ pub struct LinearTimeOram<V: OramBlock> {
     pub physical_memory: Vec<V>,
 }
 
-impl<V: OramBlock> Oram<V> for LinearTimeOram<V> {
-    fn new<R: RngCore + CryptoRng>(block_capacity: Address, _: &mut R) -> Result<Self, OramError> {
+impl<V: OramBlock> LinearTimeOram<V> {
+    /// Returns a new `LinearTimeOram` mapping addresses `0 <= address < block_capacity` to default `V` values.
+    pub fn new(block_capacity: Address) -> Result<Self, OramError> {
         log::info!("LinearTimeOram::new(capacity = {})", block_capacity,);
 
         let mut physical_memory = Vec::new();
         physical_memory.resize(usize::try_from(block_capacity)?, V::default());
         Ok(Self { physical_memory })
     }
+}
+
+impl<V: OramBlock> Oram for LinearTimeOram<V> {
+    type V = V;
 
     fn access<R: RngCore + CryptoRng, F: Fn(&V) -> V>(
         &mut self,
@@ -68,5 +73,15 @@ mod tests {
     use super::*;
     use crate::{bucket::BlockValue, test_utils::*};
 
-    create_correctness_tests_for_oram_type!(LinearTimeOram);
+    #[test]
+    fn linear_time_oram_correctness_random_workload() {
+        let mut oram = LinearTimeOram::<BlockValue<1>>::new(64).unwrap();
+        random_workload(&mut oram, 1000);
+    }
+
+    #[test]
+    fn linear_time_oram_correctness_linear_workload() {
+        let mut oram = LinearTimeOram::<BlockValue<1>>::new(64).unwrap();
+        linear_workload(&mut oram, 1000);
+    }
 }

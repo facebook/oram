@@ -19,20 +19,13 @@ use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 /// A recursive Path ORAM position map data structure. `AB` is the number of addresses stored in each ORAM block.
 #[derive(Debug)]
-pub enum PositionMap<
-    const AB: BlockSize,
-    const Z: BucketSize,
-    const RT: RecursionCutoff,
-    const SO: StashSize,
-> {
+pub enum PositionMap<const AB: BlockSize, const Z: BucketSize> {
     /// A simple, linear-time `AddressOram`.
     Base(LinearTimeOram<PositionBlock<AB>>),
     /// A recursive `AddressOram` whose position map is also an `AddressOram`.
-    Recursive(Box<PathOram<PositionBlock<AB>, Z, AB, RT, SO>>),
+    Recursive(Box<PathOram<PositionBlock<AB>, Z, AB>>),
 }
-impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const SO: StashSize>
-    PositionMap<AB, Z, RT, SO>
-{
+impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
     fn address_of_block(address: Address) -> Address {
         let block_address_bits = AB.ilog2();
         address >> block_address_bits
@@ -45,16 +38,14 @@ impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const 
     }
 }
 
-impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const SO: StashSize>
-    PositionMap<AB, Z, RT, SO>
-{
+impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
     pub fn write_position_block<R: RngCore + CryptoRng>(
         &mut self,
         address: Address,
         position_block: PositionBlock<AB>,
         rng: &mut R,
     ) -> Result<(), OramError> {
-        let address_of_block = PositionMap::<AB, Z, RT, SO>::address_of_block(address);
+        let address_of_block = PositionMap::<AB, Z>::address_of_block(address);
 
         match self {
             PositionMap::Base(linear_oram) => {
@@ -70,12 +61,12 @@ impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const 
     }
 }
 
-impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const SO: StashSize>
-    Oram<TreeIndex> for PositionMap<AB, Z, RT, SO>
-{
-    fn new<R: CryptoRng + RngCore>(
+impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
+    pub fn new<R: CryptoRng + RngCore>(
         number_of_addresses: Address,
         rng: &mut R,
+        overflow_size: StashSize,
+        recursion_cutoff: RecursionCutoff,
     ) -> Result<Self, OramError> {
         log::info!(
             "PositionMap::new(number_of_addresses = {})",
@@ -87,20 +78,26 @@ impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const 
         }
 
         let ab_address: Address = AB.try_into()?;
-        if number_of_addresses / ab_address <= RT {
+        if number_of_addresses / ab_address <= recursion_cutoff {
             let mut block_capacity = number_of_addresses / ab_address;
             if number_of_addresses % ab_address > 0 {
                 block_capacity += 1;
             }
-            Ok(Self::Base(LinearTimeOram::new(block_capacity, rng)?))
+            Ok(Self::Base(LinearTimeOram::new(block_capacity)?))
         } else {
             let block_capacity = number_of_addresses / ab_address;
-            Ok(Self::Recursive(Box::new(PathOram::new(
+            Ok(Self::Recursive(Box::new(PathOram::new_with_parameters(
                 block_capacity,
                 rng,
+                overflow_size,
+                recursion_cutoff,
             )?)))
         }
     }
+}
+
+impl<const AB: BlockSize, const Z: BucketSize> Oram for PositionMap<AB, Z> {
+    type V = TreeIndex;
 
     fn block_capacity(&self) -> Result<Address, OramError> {
         match self {
@@ -118,8 +115,8 @@ impl<const AB: BlockSize, const Z: BucketSize, const RT: RecursionCutoff, const 
         callback: F,
         rng: &mut R,
     ) -> Result<TreeIndex, OramError> {
-        let address_of_block = PositionMap::<AB, Z, RT, SO>::address_of_block(address);
-        let address_within_block = PositionMap::<AB, Z, RT, SO>::address_within_block(address)?;
+        let address_of_block = PositionMap::<AB, Z>::address_of_block(address);
+        let address_within_block = PositionMap::<AB, Z>::address_within_block(address)?;
 
         let block_callback = |block: &PositionBlock<AB>| {
             let mut result: PositionBlock<AB> = *block;
