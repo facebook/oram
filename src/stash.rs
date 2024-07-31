@@ -142,15 +142,14 @@ impl<V: OramBlock> ObliviousStash<V> {
 
         // Write the first Z * height blocks into slots in the tree
         for depth in 0..=height {
-            let mut new_bucket: Bucket<V, Z> = Bucket::default();
+            let bucket_to_write =
+                &mut physical_memory[usize::try_from(position.ct_node_on_path(depth, height))?];
 
             for slot_number in 0..Z {
                 let stash_index = (usize::try_from(depth)?) * Z + slot_number;
 
-                new_bucket.blocks[slot_number] = self.blocks[stash_index];
+                bucket_to_write.blocks[slot_number] = self.blocks[stash_index];
             }
-
-            physical_memory[usize::try_from(position.ct_node_on_path(depth, height))?] = new_bucket;
         }
 
         Ok(())
