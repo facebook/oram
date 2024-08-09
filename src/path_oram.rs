@@ -226,18 +226,15 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> PathOram<V, Z, AB> 
             .take(last_leaf_index + 1)
             .skip(first_leaf_index)
         {
-            let mut bucket_to_write = Bucket::<V, Z>::default();
             for slot_index in 0..addresses_per_leaf {
                 let address_index = (leaf_index - first_leaf_index) * 2 + slot_index;
-                bucket_to_write.blocks[slot_index] = PathOramBlock::<V> {
+
+                tree_bucket.blocks[slot_index] = PathOramBlock::<V> {
                     value: V::default(),
                     address: slot_indices_to_addresses[address_index].try_into()?,
                     position: leaf_index.try_into()?,
                 };
             }
-
-            // Write the leaf bucket back to physical memory.
-            *tree_bucket = bucket_to_write;
         }
 
         // The address block size might not divide the block capacity.
