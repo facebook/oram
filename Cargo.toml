@@ -12,15 +12,15 @@ categories = ["cryptography"]
 [dependencies]
 subtle = "2"
 rand = "0.8"
-paste = "1"
-simplelog = "0.12"
 log = "0.4"
 thiserror = "1"
-static_assertions = "1"
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
 rustyline = "14"
+paste = "1"
+static_assertions = "1"
+simplelog = "0.12"
 
 [[bench]]
 name = "benchmark"

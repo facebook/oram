@@ -22,18 +22,21 @@ use subtle::ConstantTimeEq;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 /// An `OramBlock` consisting of unstructured bytes.
-pub struct BlockValue<const B: BlockSize>([u8; B]);
+pub struct BlockValue<const B: BlockSize> {
+    /// The block's data payload.
+    pub data: [u8; B],
+}
 
 impl<const B: BlockSize> BlockValue<B> {
     /// Instantiates a `BlockValue` from an array of `BLOCK_SIZE` bytes.
     pub fn new(data: [u8; B]) -> Self {
-        Self(data)
+        Self { data }
     }
 }
 
 impl<const B: BlockSize> Default for BlockValue<B> {
     fn default() -> Self {
-        BlockValue::<B>([0u8; B])
+        BlockValue::<B> { data: [0u8; B] }
     }
 }
 
@@ -43,7 +46,7 @@ impl<const B: BlockSize> ConditionallySelectable for BlockValue<B> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         let mut result = BlockValue::default();
         for i in 0..B {
-            result.0[i] = u8::conditional_select(&a.0[i], &b.0[i], choice);
+            result.data[i] = u8::conditional_select(&a.data[i], &b.data[i], choice);
         }
         result
     }
@@ -53,7 +56,7 @@ impl<const B: BlockSize> Distribution<BlockValue<B>> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockValue<B> {
         let mut result = BlockValue::default();
         for i in 0..B {
-            result.0[i] = rng.gen();
+            result.data[i] = rng.gen();
         }
         result
     }
