@@ -13,13 +13,10 @@ use rand::{CryptoRng, Rng, RngCore};
 
 use subtle::{Choice, ConditionallySelectable, ConstantTimeGreater, ConstantTimeLess};
 
-use static_assertions::const_assert_eq;
-use std::{mem::size_of, num::TryFromIntError};
+use std::num::TryFromIntError;
 
 pub(crate) type TreeIndex = u64;
 pub(crate) type TreeHeight = u64;
-
-const_assert_eq!(size_of::<TreeIndex>(), 8);
 
 pub(crate) trait CompleteBinaryTreeIndex
 where
@@ -167,12 +164,20 @@ pub(crate) fn to_usize_vec(source: Vec<u64>) -> Result<Vec<usize>, OramError> {
 
 #[cfg(test)]
 mod tests {
+    use super::TreeIndex;
     use rand::{rngs::StdRng, SeedableRng};
+    use static_assertions::const_assert_eq;
+    use std::mem::size_of;
 
     use super::{
         bitonic_sort_by_keys, invert_permutation_oblivious,
         random_permutation_of_0_through_n_exclusive,
     };
+
+    #[test]
+    fn check_size_of_tree_index() {
+        const_assert_eq!(size_of::<TreeIndex>(), 8);
+    }
 
     #[test]
     fn test_invert_permutation_oblivious() {
