@@ -12,14 +12,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      matrix:
+        toolchain:
+          - stable
+          - 1.74
 
     steps:
       - uses: actions/checkout@main
 
-      - name: Install rust
+      - name: Install ${{ matrix.toolchain }} toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ matrix.toolchain }}
           override: true
 
       - name: Run test

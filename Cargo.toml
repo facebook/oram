@@ -1,10 +1,12 @@
 [package]
 name = "oram"
 version = "0.1.0"
+rust-version = "1.74"
 edition = "2021"
 repository = "https://github.com/facebook/oram"
 description = "An implementation of Oblivious RAM."
 license = "MIT OR Apache-2.0"
+readme = "README.md"
 keywords = ["oram", "oblivious RAM", "cryptography"]
 categories = ["cryptography"]
 
@@ -16,7 +18,7 @@ log = "0.4"
 thiserror = "1"
 
 [dev-dependencies]
-criterion = { version = "0.4", features = ["html_reports"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 rustyline = "14"
 paste = "1"
 static_assertions = "1"

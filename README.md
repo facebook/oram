@@ -5,21 +5,25 @@ This library implements an Oblivious RAM (ORAM) for secure enclave applications.
 This crate assumes that ORAM clients are running inside a secure enclave architecture that provides memory encryption.
 It does not perform encryption-on-write and thus is **not** secure without memory encryption.
 
-⚠️ **Warning**: This implementation has not been audited and is not ready for use in a real system. Use at your own risk!
+⚠️ **Warning**: This implementation has not been audited. Use at your own risk!
 
 Documentation
 -------------
 
-TODO link to docs.rs page after the crate is published.
+The API can be found [here](https://docs.rs/oram/) along with an example for usage.
 
 Installation
 ------------
 
-TODO after crate is published
+Add the following line to the dependencies of your `Cargo.toml`:
+
+```
+oram = "0.1"
+```
 
 ### Minimum Supported Rust Version
 
-TODO
+Rust **1.74** or higher.
 
 Resources
 ---------
@@ -45,7 +49,7 @@ Within `src/`:
 - `linear_time_oram.rs` contains a trivial linear-time ORAM implementation used as a base case.
 - `database.rs` defines a simple RAM abstraction (to be removed).
 - `utils.rs` contains utilities related to oblivious sorting and tree index calculations.
-- `test_utils` contains code shared between tests.
+- `test_utils.rs` contains code shared between tests.
 
 License
 -------
