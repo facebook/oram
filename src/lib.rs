@@ -7,7 +7,7 @@
 
 //! An implementation of Oblivious RAM (ORAM) for the secure enclave setting.
 //!
-//! ⚠️ **Warning**: This implementation has not been audited and is not ready for use in a real system. Use at your own risk!
+//! ⚠️ **Warning**: This implementation has not been audited. Use at your own risk!
 //!
 //! # Overview
 //!
