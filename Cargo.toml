@@ -7,7 +7,7 @@ repository = "https://github.com/facebook/oram"
 description = "An implementation of Oblivious RAM."
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-keywords = ["oram", "oblivious RAM", "cryptography"]
+keywords = ["oram", "oblivious", "cryptography"]
 categories = ["cryptography"]
 
 
