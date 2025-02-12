@@ -15,7 +15,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.74
+          - 1.81
 
     steps:
       - uses: actions/checkout@main

@@ -18,12 +18,12 @@ Installation
 Add the following line to the dependencies of your `Cargo.toml`:
 
 ```
-oram = "0.1"
+oram = "0.2.0-pre.1"
 ```
 
 ### Minimum Supported Rust Version
 
-Rust **1.74** or higher.
+Rust **1.81** or higher.
 
 Resources
 ---------
