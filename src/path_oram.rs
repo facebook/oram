@@ -254,7 +254,7 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> Oram for PathOram<V
         rng: &mut R,
     ) -> Result<V, OramError> {
         // This operation is not constant-time, but only leaks whether the ORAM index is well-formed or not.
-        if address > self.block_capacity()? {
+        if address >= self.block_capacity()? {
             return Err(OramError::AddressOutOfBoundsError {
                 attempted: address,
                 capacity: self.block_capacity()?,
