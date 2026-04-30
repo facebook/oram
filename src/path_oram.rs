@@ -333,6 +333,16 @@ mod tests {
         random_workload(&mut oram, 1000);
     }
 
+    #[test]
+    fn path_oram_rejects_out_of_bounds_address() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let capacity = 8;
+        let mut oram =
+            PathOram::<BlockValue<1>, 4, 8>::new_with_parameters(capacity, &mut rng, 40, 1)
+                .unwrap();
+        assert!(oram.read(capacity, &mut rng).is_err());
+    }
+
     // This test is #[ignore]'d because it takes about 1 second to run.
     #[test]
     #[ignore]
