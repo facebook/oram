@@ -83,7 +83,7 @@ impl<const AB: BlockSize, const Z: BucketSize> PositionMap<AB, Z> {
         let ab_address: Address = AB.try_into()?;
         if number_of_addresses / ab_address <= recursion_cutoff {
             let mut block_capacity = number_of_addresses / ab_address;
-            if number_of_addresses % ab_address > 0 {
+            if !number_of_addresses.is_multiple_of(ab_address) {
                 block_capacity += 1;
             }
             Ok(Self::Base(LinearTimeOram::new(block_capacity)?))

@@ -23,7 +23,7 @@ oram = "0.2.0-pre.1"
 
 ### Minimum Supported Rust Version
 
-Rust **1.81** or higher.
+Rust **1.88** or higher.
 
 Resources
 ---------

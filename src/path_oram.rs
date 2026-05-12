@@ -38,21 +38,21 @@ const LINEAR_TIME_ORAM_CUTOFF: RecursionCutoff = 1 << 10;
 ///
 /// - Block type `V`: the type of elements stored by the ORAM.
 /// - Bucket size `Z`: the number of blocks per Path ORAM bucket.
-///     Must be at least 2. Typical values are 3, 4, or 5.
-///     Along with the overflow size, this value affects the probability
-///     of stash overflow (see below) and should be set with care.
+///   Must be at least 2. Typical values are 3, 4, or 5.
+///   Along with the overflow size, this value affects the probability
+///   of stash overflow (see below) and should be set with care.
 /// - Positions per block `AB`:
-///     The number of positions stored in each block of the recursive position map ORAM.
-///     Must be a power of two and must be at least 2 (otherwise the recursion will not terminate).
-///     Otherwise, can be freely tuned for performance.
-///     Larger `AB` means fewer levels of recursion but higher costs for accessing each level.
+///   The number of positions stored in each block of the recursive position map ORAM.
+///   Must be a power of two and must be at least 2 (otherwise the recursion will not terminate).
+///   Otherwise, can be freely tuned for performance.
+///   Larger `AB` means fewer levels of recursion but higher costs for accessing each level.
 /// - Recursion threshold: the maximum number of position blocks that will be stored in a recursive Path ORAM.
-///     Below this value, the position map will be a linear scanning ORAM.
-///     Can be freely tuned for performance.
-///     A larger values means fewer levels of recursion, but a more expensive base position map.
+///   Below this value, the position map will be a linear scanning ORAM.
+///   Can be freely tuned for performance.
+///   A larger values means fewer levels of recursion, but a more expensive base position map.
 /// - Overflow size: The number of blocks that the stash can store between ORAM accesses without overflowing.
-///     Along with the bucket size, this value affects the probability of stash overflow (see below)
-///     and should be set with care.
+///   Along with the bucket size, this value affects the probability of stash overflow (see below)
+///   and should be set with care.
 ///
 /// ## Security
 ///
@@ -215,7 +215,7 @@ impl<V: OramBlock, const Z: BucketSize, const AB: BlockSize> PathOram<V, Z, AB> 
         let last_leaf_index = (2 * first_leaf_index) - 1;
         let ab_address: Address = AB.try_into()?;
 
-        let num_address_blocks = if block_capacity % ab_address == 0 {
+        let num_address_blocks = if block_capacity.is_multiple_of(ab_address) {
             block_capacity / ab_address
         } else {
             block_capacity / ab_address + 1
